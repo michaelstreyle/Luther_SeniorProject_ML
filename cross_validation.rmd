@@ -1,0 +1,107 @@
+---
+title: "Senior Project Start"
+author: "Michael Streyle"
+date: "October 9th, 2018"
+output: word_document
+editor_options: 
+chunk_output_type: console
+
+---
+  
+```{r echo=T}
+
+```
+
+# Questions
+
+- Cross-Validation optimal cutoff in accordance with the powerpoint Dr. Phil sent. 
+- optimal cutoff with just the train/test split??
+
+
+
+```{r}
+setwd("C:/Users/Michael Streyle/Desktop/Senior Project") #change this when i switch computers
+#setwd("C:/Users/Michael/Desktop/Senior Project")
+
+data1  <- read.csv('Dataset_spine.csv', col.names = c('pelvic_incidence', 'pelvic_tilt', 'lumbar_lordosis_angle', 'sacral_slope', 'pelvic_radius', 'degree_spondylolisthesis', 'pelvic_slope', 'Direct_tilt', 'thoracic_slope', 'cervical_tilt', 'sacrum_angle', 'scoliosis_slope', 'classification', ' '))
+
+data1$classification = ifelse(data1$classification == "Abnormal", 0, 1) #making classification numeric
+data1$X. <- NULL #dropping the column with variable descriptions in it
+
+
+
+data = scale(data1[, 1:12]) #scaling all except classification variable
+data = data.frame(data)
+data$classification = data1$classification #add classification back into scaled dataframe
+
+```
+
+
+
+
+```{r}
+
+
+data$rand_int = runif(n=nrow(data), min = 0, max = 1) #random values from uniform distribution
+data2 = data[order(data$rand_int),] #reorder dataframe by random value
+
+data2$group = seq(from = 1, to=5, by=1)
+
+attach(data2)
+
+
+
+
+
+data2$pred_svm = 0
+
+for (grp in 1:5){
+  train = data2[data2$group != grp, ]
+  test = data2[data2$group == grp,]
+  
+  cv_svm <- svm(classification ~ pelvic_tilt + pelvic_incidence + lumbar_lordosis_angle + 
+                     sacral_slope + pelvic_radius + degree_spondylolisthesis, data = train)
+
+  cv_svm_pred = predict(cv_svm, test)
+  data2$pred_svm[data2$group == grp] = cv_svm_pred
+}
+
+cv_svm_cfr = confusionMatrix( predicted = data2$pred_svm, actual = data2$classification)
+cv_svm_cfr
+
+#accuracy score for Cross Validated SVM
+acc_cv_svm = (cv_svm_cfr[1,1] + cv_svm_cfr[2,2])/nrow(data2)
+acc_cv_svm
+```
+
+# Find Optimal Cutoff for Cross-Validated SVM
+
+
+```{r}
+
+#grid search using the predictions as possible values. maximizing accuracy score. returns optimal cutoff as op
+li = c()
+for (val in data2$pred_svm){
+  cf = confusionMatrix(predicted = data2$pred_svm, actual = data2$classification, cutoff = val)
+  acc = (cf[1,1] + cf[2,2])/nrow(data2)
+  li = c(li, acc)
+  max1 = max(li)
+  ind = match(max1, li)
+  op = data2$pred_svm[ind]
+}
+
+op
+#ideal cutoff is 0.5886364
+
+op_cv_svm_cfr = confusionMatrix( predicted = data2$pred_svm, actual = data2$classification, cutoff = op )
+op_cv_svm_cfr
+
+#accuracy score for Cross Validated SVM
+op_acc_cv_svm = (op_cv_svm_cfr[1,1] + op_cv_svm_cfr[2,2])/nrow(data2)
+op_acc_cv_svm
+
+
+```
+
+
+

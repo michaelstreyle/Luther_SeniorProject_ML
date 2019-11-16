@@ -1,0 +1,46 @@
+ \documentclass[12pt]{article}
+ %File creation date: 10/23/18  at 16:16
+ \usepackage{pstricks,pst-node,pst-tree}
+ \usepackage{geometry}
+ \usepackage{lscape}
+ \pagestyle{empty}
+ \begin{document}
+ %\begin{landscape}
+ \begin{center}
+\psset{linecolor=black,tnsep=1pt,tndepth=0cm,tnheight=0cm,treesep=1.2cm,levelsep=56pt,radius=10pt}
+  \pstree[treemode=D]{\Tcircle{ \normalsize 1 }~[tnpos=l]{\shortstack[r]{\texttt{\detokenize{V1}}\\$\leq$-0.3047}}
+    ~[tnpos=r]{\shortstack[r]{0.68\\0.32}}}{
+  \pstree[treemode=D]{\Tcircle{ \normalsize 2 }~[tnpos=l]{\shortstack[r]{\texttt{\detokenize{sacral_slope}}\\$\leq$-1.10}}
+ }{
+ \Tcircle[fillcolor=yellow,fillstyle=solid]{ 4 }
+    ~[tnpos=l]{\shortstack[r]{0.74\\0.26}}
+    ~{\shortstack{\makebox[0pt][c]{\texttt{\detokenize{Abnormal}}}\\35}}
+  \pstree[treemode=D]{\Tcircle{ \normalsize 5 }~[tnpos=l]{\shortstack[r]{\texttt{\detokenize{pelvic_radius}}\\$\leq$-0.0421}}
+ }{
+ \Tcircle[fillcolor=yellow,fillstyle=solid]{\small 10}
+    ~[tnpos=l]{\shortstack[r]{0.59\\0.41}}
+    ~{\shortstack{\makebox[0pt][c]{\texttt{\detokenize{Abnormal}}}\\46}}
+ \Tcircle[fillcolor=green,fillstyle=solid]{\small 11}
+    ~[tnpos=r]{\shortstack[r]{0.14\\0.86}}
+    ~{\shortstack{\makebox[0pt][c]{\texttt{\detokenize{Normal}}}\\80}}
+   }
+   }
+ \Tcircle[fillcolor=yellow,fillstyle=solid]{ 3 }
+    ~[tnpos=r]{\shortstack[r]{0.98\\0.02}}
+    ~{\shortstack{\makebox[0pt][c]{\texttt{\detokenize{Abnormal}}}\\149}}
+ }
+ \end{center}
+GUIDE v.29.0  0.50-SE pruned
+classification tree for predicting \texttt{\detokenize{classification}} using
+estimated priors
+and unit misclassification costs.
+Maximum number of split levels is 10 and minimum node sample size is 2.
+At each split, an observation goes to the left branch 
+ if and only if the condition is satisfied.
+\texttt{\detokenize{V1}} = \texttt{\detokenize{degree_spondylolisthesis}}.
+Predicted classes and sample sizes printed below terminal nodes;
+ class proportions for \texttt{\detokenize{classification}} =
+ \texttt{\detokenize{Abnormal}} and \texttt{\detokenize{Normal}} beside nodes.
+Second best split variable at root node is \texttt{\detokenize{pelvic_radius}}.
+ %\end{landscape}
+ \end{document}

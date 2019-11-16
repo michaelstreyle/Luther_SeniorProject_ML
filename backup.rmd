@@ -1,0 +1,1210 @@
+---
+title: "Senior Project Start"
+author: "Michael Streyle"
+date: "September 28th, 2018"
+output: word_document
+editor_options: 
+  chunk_output_type: console
+---
+  
+```{r echo=T}
+```
+
+# Beginning
+
+```{r}
+
+#setwd("C:/Users/Michael Streyle/Desktop/Senior Project") #change this when i switch computers
+setwd("C:/Users/Michael/Desktop/Senior Project")
+
+data1  <- read.csv('Dataset_spine.csv', col.names = c('pelvic_incidence', 'pelvic_tilt', 'lumbar_lordosis_angle', 'sacral_slope', 'pelvic_radius', 'degree_spondylolisthesis', 'pelvic_slope', 'Direct_tilt', 'thoracic_slope', 'cervical_tilt', 'sacrum_angle', 'scoliosis_slope', 'classification', ' '))
+
+data1$classification = ifelse(data1$classification == "Abnormal", 0, 1) #making classification numeric
+data1$X. <- NULL #dropping the column with variable descriptions in it
+
+
+
+data = scale(data1[, 1:12]) #scaling all except classification variable
+data = data.frame(data)
+data$classification = data1$classification #add classification back into scaled dataframe
+
+
+#these are the packages I use:
+
+library(ModelMetrics) 
+library(e1071) #SVM
+library(randomForest)
+
+```
+# Introduction
+
+The data used in this analysis is a collection of 310 observations of spinal measurements. The objective is to classify each observation as normal or abnormal using machine learning modeling. As seen in the pairs plot, the last 6 variables are essentially random noise, so they will be left out of the initial models. Later, I will use these random variabels to compare how the models handle extra noise. 
+
+```{r}
+
+attach(data)
+
+```
+
+# Initial Exploration
+
+A histogram of each of the first 6 predictor variables reveals that they are each relatively normal. A histogram of the other 6 predictor variables confirms that they are not normally distributed but rather somewhat uniformly distributed. This aligns with the idea that the last 6 are random variables. There are no missing values in this data. 
+
+```{r}
+my_cols <- c("#00AFBB", "#E7B800", "#FC4E07")
+pairs(data, col = my_cols[data$classification]) #pairs plot
+
+#histograms
+hist(pelvic_incidence)
+hist(pelvic_tilt)
+hist(lumbar_lordosis_angle)
+hist(sacral_slope)
+hist(pelvic_radius)
+hist(degree_spondylolisthesis)
+#hist(pelvic_slope)
+#hist(Direct_tilt)
+
+
+#boxplots
+boxplot(pelvic_incidence)
+boxplot(pelvic_tilt)
+boxplot(lumbar_lordosis_angle)
+boxplot(sacral_slope)
+boxplot(pelvic_radius)
+boxplot(degree_spondylolisthesis)
+
+
+
+```
+
+
+# Logistic Regression
+
+First, I am going to classify the spine measurements using Logistic Regression.
+By splitting the data into a training and test set, I am training the model on a randomly selected 80% subset of the data and keeping 20% of the data to test the performance of the model. I do the same thing for the Support Vector Machine and the Random Forest. 
+
+```{r}
+#make train and test set
+smp_size <- floor(0.8 * nrow(data))
+set.seed(12)
+train_ind <- sample(seq_len(nrow(data)), size = smp_size)
+lr_train <- data[train_ind, ]
+lr_test <- data[-train_ind, ]
+
+
+#creating a first order model from the training data
+back.logit <- glm(classification ~ pelvic_tilt + pelvic_incidence + lumbar_lordosis_angle + sacral_slope + pelvic_radius + degree_spondylolisthesis, data=lr_train, family=binomial(link="logit"))
+
+pred = predict(back.logit, lr_test, type = 'response')
+hist(pred)
+summary(back.logit)
+
+#odds ratios
+#expbetas = exp(back.logit$coefficients)
+#expbetas
+
+
+lr_test$lr_probs = pred
+
+lr_cfr = confusionMatrix( predicted = lr_test$lr_probs, actual = lr_test$classification) 
+lr_cfr
+
+#accuracy score for Logistic Regression
+acc_lr = (lr_cfr[1,1] + lr_cfr[2,2])/nrow(lr_test)
+acc_lr
+
+```
+
+# Find Optimal Cutoff for Logistic Regression
+
+
+```{r}
+# Residual plots
+par (mfrow = c(1,2))
+dev<-residuals(back.logit)
+plot(dev, ylab="deviance residuals")
+abline(h=0, lty=3)
+
+fit.probs = back.logit$fitted.values
+plot (fit.probs, dev, xlab="Fitted Probability", ylab="Deviance Residuals")
+abline(h=0, lty=3)
+lines (lowess (fit.probs, dev))
+
+
+# ROC curve - install package ROCR
+par (mfrow = c(1,2))
+library(ROCR)
+pred1 <- prediction(back.logit$fitted.values, back.logit$y)
+perf1 <- performance(pred1,"tpr","fpr")
+auc1 <- performance(pred1,"auc")@y.values[[1]]
+auc1
+plot(perf1, lwd=2, col=2)
+abline(0,1)
+legend(0.25, 0.2, c(paste ("AUC=", round(auc1, 2), sep="")), cex=0.8, lwd=2, col=2)
+
+# Use the pred1 object from the previous code chunk to create a data frame
+# with the relevant columns
+roc.table = cbind.data.frame(pred1@tn, pred1@fn, pred1@fp, pred1@tp, 
+                             pred1@cutoffs)
+names (roc.table) = c("TrueNeg", "FalseNeg", "FalsePos", "TruePos", "Cutoff")
+attach (roc.table)
+roc.table$sensitivity = TruePos / (TruePos + FalseNeg)  # True positive rate
+roc.table$specificity = TrueNeg / (TrueNeg + FalsePos)  # 1 - False pos rate
+roc.table$FalsePosRate = 1 - roc.table$specificity
+roc.table$PctCorrect = (TruePos + TrueNeg) / 
+                       (TruePos + TrueNeg + FalsePos + FalseNeg)
+write.csv (roc.table, "simple_lr_cutoffs.csv")
+
+#ideal cutoff is 0.370495178664222 from csv file
+
+op_lr_cfr = confusionMatrix( predicted = lr_test$lr_probs, actual = lr_test$classification, 
+                             cutoff = 0.370495178664222) 
+op_lr_cfr
+
+#accuracy score for Logistic Regression
+op_acc_lr = (op_lr_cfr[1,1] + op_lr_cfr[2,2])/nrow(lr_test)
+op_acc_lr
+
+
+```
+
+# Support Vector Machine
+
+In order to train a Support Vector Machine, I again created a training and test sets with the same random seed. 
+
+
+```{r}
+#make train and test set
+smp_size <- floor(0.8 * nrow(data))
+set.seed(12)
+train_ind <- sample(seq_len(nrow(data)), size = smp_size)
+svm_train <- data[train_ind, ]
+svm_test <- data[-train_ind, ]
+
+#Fit a model. The function syntax is very similar to lm function
+ 
+model_svm <- svm(classification ~ pelvic_tilt + pelvic_incidence + lumbar_lordosis_angle + sacral_slope + pelvic_radius + degree_spondylolisthesis, data = svm_train)
+
+
+
+sum1 = summary(model_svm) 
+#Use the predictions on the data
+pred <- predict(model_svm, svm_test)
+pred
+svm_test$svm_pred = pred
+
+
+svm_cf = confusionMatrix(svm_test$classification, svm_test$svm_pred) 
+svm_cf
+
+#Accuracy Score for SVM
+acc_svm = (svm_cf[1,1] + svm_cf[2,2])/nrow(svm_test)
+acc_svm
+
+```
+# Find Optimal Cutoff for SVM
+
+
+```{r}
+
+#grid search using the predictions as possible values. maximizing accuracy score. returns optimal cutoff as op
+li = c()
+for (val in pred){
+  cf = confusionMatrix(svm_test$classification, svm_test$svm_pred, cutoff = val)
+  acc = (cf[1,1] + cf[2,2])/nrow(svm_test)
+  li = c(li, acc)
+  max1 = max(li)
+  ind = match(max1, li)
+  op = pred[ind]
+}
+
+
+#ideal cutoff is 0.3655708
+
+op_svm_cf = confusionMatrix(svm_test$classification, svm_test$svm_pred, cutoff = op) 
+op_svm_cf
+
+#optimal Accuracy Score for SVM
+op_acc_svm = (op_svm_cf[1,1] + op_svm_cf[2,2])/nrow(svm_test)
+op_acc_svm
+
+```
+
+
+# Random Forest
+
+```{r}
+#make train and test set
+smp_size <- floor(0.8 * nrow(data))
+set.seed(12)
+train_ind <- sample(seq_len(nrow(data)), size = smp_size)
+rf_train <- data[train_ind, ]
+rf_test <- data[-train_ind, ]
+
+
+random_forest = randomForest(classification ~ pelvic_tilt + pelvic_incidence + lumbar_lordosis_angle + sacral_slope + pelvic_radius + degree_spondylolisthesis, data = rf_train)
+
+random_forest
+plot(random_forest)
+
+#importance of variables
+importance(random_forest)
+varImpPlot(random_forest,type=2)
+
+pred = predict(random_forest, rf_test)
+rf_test$rf_pred = pred
+
+rf_cf = confusionMatrix(rf_test$classification, rf_test$rf_pred)
+rf_cf
+
+#Accuracy Score for Random Forest
+acc_rf = (rf_cf[1,1] + rf_cf[2,2])/nrow(rf_test)
+acc_rf
+
+
+```
+# Find Optimal Cutoff for RandomForest
+
+
+```{r}
+
+#grid search using the predictions as possible values. maximizing accuracy score. returns optimal cutoff as op
+li = c()
+for (val in pred){
+  cf = confusionMatrix(rf_test$classification, rf_test$rf_pred, cutoff = val)
+  acc = (cf[1,1] + cf[2,2])/nrow(rf_test)
+  li = c(li, acc)
+  max1 = max(li)
+  ind = match(max1, li)
+  op = pred[ind]
+}
+
+op
+#ideal cutoff is 0.3627 
+
+op_rf_cf = confusionMatrix(rf_test$classification, rf_test$rf_pred, cutoff = op) 
+op_rf_cf
+
+#optimal Accuracy Score for RF
+op_acc_rf = (op_rf_cf[1,1] + op_rf_cf[2,2])/nrow(rf_test)
+op_acc_rf
+
+```
+# Compare Initial Three Models
+
+Below are visuals of the confusion matrices for the three models.
+The blue quadrants are the same size and represent the correct predictions, and the yellow quadrants represent the incorrect predictions. The bands in each quadrant represent 95% confidence interval for each odds ratio used. 
+
+
+```{r}
+
+row.names(lr_cfr) = c('Positive', 'Negative')
+colnames(lr_cfr) = c('Positie', 'Negative')
+
+svm_cf
+rf_cf
+lr_cfr
+new_colors = c("#E7B800","#00AFBB", "#FC4E07")
+
+fourfoldplot(svm_cf, color = new_colors, main='Support Vector Machine')
+fourfoldplot(lr_cfr, color = new_colors, main='Logistic Regression')
+fourfoldplot(rf_cf, color = new_colors, main='Random Forest')
+
+```
+
+
+# Preparing for Cross Validation
+
+
+```{r}
+
+
+
+data$rand_int = runif(n=nrow(data), min = 0, max = 1) #random values from uniform distribution
+data2 = data[order(data$rand_int),] #reorder dataframe by random value
+
+data2$group = seq(from = 1, to=5, by=1)
+
+attach(data2)
+```
+
+# Cross-Validation with Logistic Regression
+
+Next, I am interested in how cross-validation improves the model. I am implementing cross-validation by hand by making 5 subcategories of the data and training each model 5 times, each time keeping one fifth of the data out of training to be used as a test set.
+
+
+```{r}
+
+#Logistic Regression Cross-Validation
+data2$pred_cv = 0
+for (grp in 1:5){
+  train = data2[data2$group != grp, ]
+  test = data2[data2$group == grp,]
+  
+  cv_lr <- glm(classification ~ pelvic_tilt + pelvic_incidence + 
+                      lumbar_lordosis_angle + sacral_slope + pelvic_radius + degree_spondylolisthesis,
+                    data=train, family=binomial(link="logit"))
+  cv_lr_pred = predict(cv_lr, test, type = 'response')
+  data2$pred_cv[data2$group == grp] = cv_lr_pred
+}
+
+cv_lr_cfr = confusionMatrix( predicted = data2$pred_cv, actual = data2$classification)
+cv_lr_cfr
+
+#accuracy score for Cross Validated Logistic Regression
+acc_cv_lr = (cv_lr_cfr[1,1] + cv_lr_cfr[2,2])/nrow(data2)
+acc_cv_lr
+
+```
+
+# Find Optimal Cutoff for Cross-Validated Logistic Regression
+
+
+```{r}
+# Residual plots
+par (mfrow = c(1,2))
+dev<-residuals(cv_lr)
+plot(dev, ylab="deviance residuals")
+abline(h=0, lty=3)
+
+fit.probs = cv_lr$fitted.values
+plot (fit.probs, dev, xlab="Fitted Probability", ylab="Deviance Residuals")
+abline(h=0, lty=3)
+lines (lowess (fit.probs, dev))
+
+
+# ROC curve - install package ROCR
+par (mfrow = c(1,2))
+library(ROCR)
+pred1 <- prediction(cv_lr$fitted.values, cv_lr$y)
+perf1 <- performance(pred1,"tpr","fpr")
+auc1 <- performance(pred1,"auc")@y.values[[1]]
+auc1
+plot(perf1, lwd=2, col=2)
+abline(0,1)
+legend(0.25, 0.2, c(paste ("AUC=", round(auc1, 2), sep="")), cex=0.8, lwd=2, col=2)
+
+# Use the pred1 object from the previous code chunk to create a data frame
+# with the relevant columns
+roc.table = cbind.data.frame(pred1@tn, pred1@fn, pred1@fp, pred1@tp, 
+                             pred1@cutoffs)
+names (roc.table) = c("TrueNeg", "FalseNeg", "FalsePos", "TruePos", "Cutoff")
+attach (roc.table)
+roc.table$sensitivity = TruePos / (TruePos + FalseNeg)  # True positive rate
+roc.table$specificity = TrueNeg / (TrueNeg + FalsePos)  # 1 - False pos rate
+roc.table$FalsePosRate = 1 - roc.table$specificity
+roc.table$PctCorrect = (TruePos + TrueNeg) / 
+                       (TruePos + TrueNeg + FalsePos + FalseNeg)
+write.csv (roc.table, "cv_lr_cutoffs.csv")
+
+#ideal cutoff is  from csv file 0.735828273715841
+
+op_cv_lr_cfr = confusionMatrix( predicted = data2$pred_cv, actual = data2$classification, cutoff = 0.735828273715841)
+op_cv_lr_cfr
+
+#accuracy score for Cross Validated Logistic Regression
+op_acc_cv_lr = (op_cv_lr_cfr[1,1] + op_cv_lr_cfr[2,2])/nrow(data2)
+op_acc_cv_lr
+
+
+```
+
+# Cross Validation with SVM
+
+Here, I am using the same folds as above, but with the SVM model. 
+
+```{r}
+#SVM Cross-Validation
+
+data2$pred_svm = 0
+
+for (grp in 1:5){
+  train = data2[data2$group != grp, ]
+  test = data2[data2$group == grp,]
+  
+  cv_svm <- svm(classification ~ pelvic_tilt + pelvic_incidence + lumbar_lordosis_angle + 
+                     sacral_slope + pelvic_radius + degree_spondylolisthesis, data = train)
+
+  cv_svm_pred = predict(cv_svm, test)
+  data2$pred_svm[data2$group == grp] = cv_svm_pred
+}
+
+cv_svm_cfr = confusionMatrix( predicted = data2$pred_svm, actual = data2$classification)
+cv_svm_cfr
+
+#accuracy score for Cross Validated SVM
+acc_cv_svm = (cv_svm_cfr[1,1] + cv_svm_cfr[2,2])/nrow(data2)
+acc_cv_svm
+```
+
+# Find Optimal Cutoff for Cross-Validated SVM
+
+
+```{r}
+
+#grid search using the predictions as possible values. maximizing accuracy score. returns optimal cutoff as op
+li = c()
+for (val in data2$pred_svm){
+  cf = confusionMatrix(predicted = data2$pred_svm, actual = data2$classification, cutoff = val)
+  acc = (cf[1,1] + cf[2,2])/nrow(data2)
+  li = c(li, acc)
+  max1 = max(li)
+  ind = match(max1, li)
+  op = data2$pred_svm[ind]
+}
+
+op
+#ideal cutoff is 0.5886364
+
+op_cv_svm_cfr = confusionMatrix( predicted = data2$pred_svm, actual = data2$classification, cutoff = op )
+op_cv_svm_cfr
+
+#accuracy score for Cross Validated SVM
+op_acc_cv_svm = (op_cv_svm_cfr[1,1] + op_cv_svm_cfr[2,2])/nrow(data2)
+op_acc_cv_svm
+
+```
+
+# Cross-Validation with RandomForest
+
+Using the same folds again, this time using the RandomForest model. 
+
+
+```{r}
+
+data2$pred_ranfor = 0
+
+for (grp in 1:5){
+  train = data2[data2$group != grp, ]
+  test = data2[data2$group == grp,]
+  
+  cv_ranfor <- randomForest(classification ~ pelvic_tilt + pelvic_incidence + lumbar_lordosis_angle + 
+                     sacral_slope + pelvic_radius + degree_spondylolisthesis, data = train)
+
+  pred_ranfor = predict(object = cv_ranfor, test)
+  data2$pred_ranfor[data2$group == grp] = pred_ranfor
+}
+
+importance(random_forest)
+varImpPlot(random_forest,type=2)
+
+cv_ranfor_cf = confusionMatrix( predicted = data2$pred_ranfor, actual = data2$classification)
+cv_ranfor_cf
+
+#accuracy score for Cross Validated RandomForest
+acc_cv_rf = (cv_ranfor_cf[1,1] + cv_ranfor_cf[2,2])/nrow(data2)
+acc_cv_rf
+
+```
+# Find Optimal Cutoff for Cross-Validated RandomForest
+
+
+```{r}
+
+#grid search using the predictions as possible values. maximizing accuracy score. returns optimal cutoff as op
+li = c()
+for (val in data2$pred_ranfor){
+  cf = confusionMatrix(data2$classification, data2$pred_ranfor, cutoff = val)
+  acc = (cf[1,1] + cf[2,2])/nrow(data2)
+  li = c(li, acc)
+  max1 = max(li)
+  ind = match(max1, li)
+  op = data2$pred_ranfor[ind]
+}
+
+op
+#ideal cutoff is 0.4438667
+
+op_cv_rf_cf = confusionMatrix(data2$classification, data2$pred_ranfor, cutoff = op) 
+op_cv_rf_cf
+
+#optimal Accuracy Score for RF
+op_cv_acc_rf = (op_cv_rf_cf[1,1] + op_cv_rf_cf[2,2])/nrow(data2)
+op_cv_acc_rf
+
+```
+
+
+# Compare Cross Validated vs. Train/Test Split
+
+
+By computing a simple average of the accuracy scores of the three models which used cross-validation and of those that did not, we can see that cross-validation does indeed improve a model's performance. 
+
+```{r}
+
+
+reg = (acc_lr + acc_svm + acc_rf)/3
+op_reg = (op_acc_lr + op_acc_svm + op_acc_rf)/3
+cross = (acc_cv_lr + acc_cv_svm + acc_cv_rf)/3
+op_cross = (op_acc_cv_lr + op_acc_cv_svm + op_cv_acc_rf)/3
+
+reg
+cross
+op_reg
+op_cross
+
+```
+
+# Calculate Odds Ratio for Optimized, Cross-Validated Models
+
+```{r}
+library(fmsb)
+#null hypothesis is odds ratio = 1
+oddsratio(op_cv_lr_cfr) #not sure I'm doing this right. Check with Dr.Phil
+oddsratio(op_cv_svm_cfr)
+oddsratio(op_cv_rf_cf)
+
+
+```
+# Add Provided Random Noise to Logistic Regression
+
+With Cross-Validation
+
+```{r}
+
+df  <- read.csv('Dataset_spine.csv', col.names = c('pelvic_incidence', 'pelvic_tilt', 'lumbar_lordosis_angle', 'sacral_slope', 'pelvic_radius', 'degree_spondylolisthesis', 'pelvic_slope', 'Direct_tilt', 'thoracic_slope', 'cervical_tilt', 'sacrum_angle', 'scoliosis_slope', 'classification', ' '))
+
+df$classification = ifelse(df$classification == "Abnormal", 0, 1) #making classification numeric
+df$X. <- NULL #dropping the column with variable descriptions in it
+
+
+
+data = scale(df[, 1:12]) #scaling all except classification variable
+data = data.frame(data)
+data$classification = data1$classification #add classification back into scaled dataframe
+
+
+data$rand_int = runif(n=nrow(data), min = 0, max = 1) #random values from uniform distribution
+data2 = data[order(data$rand_int),] #reorder dataframe by random value
+
+data2$group = seq(from = 1, to=5, by=1)
+
+attach(data2)
+
+
+data2$pred_cv = 0
+for (grp in 1:5){
+  train = data2[data2$group != grp, ]
+  test = data2[data2$group == grp,]
+  
+  cv_lr <- glm(classification ~ pelvic_tilt + pelvic_incidence + 
+                      lumbar_lordosis_angle + sacral_slope + pelvic_radius + degree_spondylolisthesis + pelvic_slope 
+               + Direct_tilt + thoracic_slope + cervical_tilt + sacrum_angle + scoliosis_slope,
+                    data=train, family=binomial(link="logit"))
+  cv_lr_pred = predict(cv_lr, test, type = 'response')
+  data2$pred_cv[data2$group == grp] = cv_lr_pred
+}
+
+cv_lr_cfr_wprn = confusionMatrix( predicted = data2$pred_cv, actual = data2$classification)
+cv_lr_cfr_wprn #with provided random noise
+
+#accuracy score for Cross Validated RandomForest with Provided Random Noise
+acc_cv_lr_wprn = (cv_lr_cfr_wprn[1,1] + cv_lr_cfr_wprn[2,2])/nrow(data2)
+acc_cv_lr_wprn
+
+
+
+```
+
+
+
+# Add Provided Random Noise to SVM
+
+
+```{r}
+df  <- read.csv('Dataset_spine.csv', col.names = c('pelvic_incidence', 'pelvic_tilt', 'lumbar_lordosis_angle', 'sacral_slope', 'pelvic_radius', 'degree_spondylolisthesis', 'pelvic_slope', 'Direct_tilt', 'thoracic_slope', 'cervical_tilt', 'sacrum_angle', 'scoliosis_slope', 'classification', ' '))
+
+df$classification = ifelse(df$classification == "Abnormal", 0, 1) #making classification numeric
+df$X. <- NULL #dropping the column with variable descriptions in it
+
+
+
+data = scale(df[, 1:12]) #scaling all except classification variable
+data = data.frame(data)
+data$classification = data1$classification #add classification back into scaled dataframe
+
+
+data$rand_int = runif(n=nrow(data), min = 0, max = 1) #random values from uniform distribution
+data2 = data[order(data$rand_int),] #reorder dataframe by random value
+
+data2$group = seq(from = 1, to=5, by=1)
+
+attach(data2)
+
+
+data2$pred_svm = 0
+for (grp in 1:5){
+  train = data2[data2$group != grp, ]
+  test = data2[data2$group == grp,]
+  
+  svm <- svm(classification ~ pelvic_tilt + pelvic_incidence + 
+                      lumbar_lordosis_angle + sacral_slope + pelvic_radius + degree_spondylolisthesis + pelvic_slope 
+               + Direct_tilt + thoracic_slope + cervical_tilt + sacrum_angle + scoliosis_slope,
+                    data=train)
+  svm_pred = predict(svm, test, type = 'response')
+  data2$pred_svm[data2$group == grp] = svm_pred
+}
+
+cv_svm_cfr_wprn = confusionMatrix( predicted = data2$pred_svm, actual = data2$classification)
+cv_svm_cfr_wprn #with provided random noise
+
+#accuracy score for Cross Validated Logistic Regression with Provided Random Noise
+acc_cv_svm_wprn = (cv_svm_cfr_wprn[1,1] + cv_svm_cfr_wprn[2,2])/nrow(data2)
+acc_cv_svm_wprn
+
+
+
+```
+
+# Add Provided Random Noise to Random Forest
+With Cross-Validation
+
+```{r}
+
+df  <- read.csv('Dataset_spine.csv', col.names = c('pelvic_incidence', 'pelvic_tilt', 'lumbar_lordosis_angle', 'sacral_slope', 'pelvic_radius', 'degree_spondylolisthesis', 'pelvic_slope', 'Direct_tilt', 'thoracic_slope', 'cervical_tilt', 'sacrum_angle', 'scoliosis_slope', 'classification', ' '))
+
+df$classification = ifelse(df$classification == "Abnormal", 0, 1) #making classification numeric
+df$X. <- NULL #dropping the column with variable descriptions in it
+
+
+
+data = scale(df[, 1:12]) #scaling all except classification variable
+data = data.frame(data)
+data$classification = data1$classification #add classification back into scaled dataframe
+
+
+data$rand_int = runif(n=nrow(data), min = 0, max = 1) #random values from uniform distribution
+data2 = data[order(data$rand_int),] #reorder dataframe by random value
+
+data2$group = seq(from = 1, to=5, by=1)
+
+attach(data2)
+
+
+data2$pred_rf = 0
+for (grp in 1:5){
+  train = data2[data2$group != grp, ]
+  test = data2[data2$group == grp,]
+  
+  rf <- randomForest(classification ~ pelvic_tilt + pelvic_incidence + 
+                      lumbar_lordosis_angle + sacral_slope + pelvic_radius + degree_spondylolisthesis + pelvic_slope 
+               + Direct_tilt + thoracic_slope + cervical_tilt + sacrum_angle + scoliosis_slope,
+                    data=train)
+  rf_pred = predict(rf, test, type = 'response')
+  data2$pred_rf[data2$group == grp] = rf_pred
+}
+
+cv_rf_cfr_wprn = confusionMatrix( predicted = data2$pred_rf, actual = data2$classification)
+cv_rf_cfr_wprn #with provided random noise
+
+#accuracy score for Cross Validated Logistic Regression with Provided Random Noise
+acc_cv_rf_wprn = (cv_rf_cfr_wprn[1,1] + cv_rf_cfr_wprn[2,2])/nrow(data2)
+acc_cv_rf_wprn
+
+
+
+
+```
+
+
+
+
+# Add 10 Random Variables to Logistic Regression
+
+
+```{r}
+df  <- read.csv('Dataset_spine.csv', col.names = c('pelvic_incidence', 'pelvic_tilt', 'lumbar_lordosis_angle', 'sacral_slope', 'pelvic_radius', 'degree_spondylolisthesis', 'pelvic_slope', 'Direct_tilt', 'thoracic_slope', 'cervical_tilt', 'sacrum_angle', 'scoliosis_slope', 'classification', ' '))
+
+df$classification = ifelse(df$classification == "Abnormal", 0, 1) #making classification numeric
+df$X. <- NULL #dropping the column with variable descriptions in it
+data = scale(df[, 1:12]) #scaling all except classification variable
+data = data.frame(data)
+data$classification = df$classification #add classification back into scaled dataframe
+
+rand_df = data.frame(matrix(rnorm(10*nrow(data)), nrow = nrow(data), ncol = 10))
+data = cbind(data, rand_df)
+
+
+
+
+data$rand_int = runif(n=nrow(data), min = 0, max = 1) #random values from uniform distribution
+data2 = data[order(data$rand_int),] #reorder dataframe by random value
+
+data2$group = seq(from = 1, to=5, by=1)
+
+attach(data2)
+
+
+data2$pred_cv = 0
+for (grp in 1:5){
+  train = data2[data2$group != grp, ]
+  test = data2[data2$group == grp,]
+  
+  cv_lr <- glm(classification ~ .,
+                    data=train, family=binomial(link="logit"))
+  cv_lr_pred = predict(cv_lr, test, type = 'response')
+  data2$pred_cv[data2$group == grp] = cv_lr_pred
+}
+
+cv_lr_cfr_w10 = confusionMatrix( predicted = data2$pred_cv, actual = data2$classification)
+cv_lr_cfr_w10 #with provided random noise
+
+#accuracy score for Cross Validated RandomForest with Provided Random Noise
+acc_cv_lr_w10 = (cv_lr_cfr_w10[1,1] + cv_lr_cfr_w10[2,2])/nrow(data2)
+acc_cv_lr_w10
+
+
+
+```
+
+# Add 100 Random Variables to Logistic Regression
+
+
+```{r}
+df  <- read.csv('Dataset_spine.csv', col.names = c('pelvic_incidence', 'pelvic_tilt', 'lumbar_lordosis_angle', 'sacral_slope', 'pelvic_radius', 'degree_spondylolisthesis', 'pelvic_slope', 'Direct_tilt', 'thoracic_slope', 'cervical_tilt', 'sacrum_angle', 'scoliosis_slope', 'classification', ' '))
+
+df$classification = ifelse(df$classification == "Abnormal", 0, 1) #making classification numeric
+df$X. <- NULL #dropping the column with variable descriptions in it
+data = scale(df[, 1:12]) #scaling all except classification variable
+data = data.frame(data)
+data$classification = df$classification #add classification back into scaled dataframe
+
+rand_df = data.frame(matrix(rnorm(100*nrow(data)), nrow = nrow(data), ncol = 100))
+data = cbind(data, rand_df)
+
+
+data$rand_int = runif(n=nrow(data), min = 0, max = 1) #random values from uniform distribution
+data2 = data[order(data$rand_int),] #reorder dataframe by random value
+
+data2$group = seq(from = 1, to=5, by=1)
+
+attach(data2)
+
+
+data2$pred_cv = 0
+for (grp in 1:5){
+  train = data2[data2$group != grp, ]
+  test = data2[data2$group == grp,]
+  
+  cv_lr <- glm(classification ~ .,
+                    data=train, family=binomial(link="logit"))
+  cv_lr_pred = predict(cv_lr, test, type = 'response')
+  data2$pred_cv[data2$group == grp] = cv_lr_pred
+}
+
+cv_lr_cfr_w100 = confusionMatrix( predicted = data2$pred_cv, actual = data2$classification)
+cv_lr_cfr_w100 #with provided random noise
+
+#accuracy score for Cross Validated RandomForest with Provided Random Noise
+acc_cv_lr_w100 = (cv_lr_cfr_w100[1,1] + cv_lr_cfr_w100[2,2])/nrow(data2)
+acc_cv_lr_w100
+
+
+
+```
+
+
+# Add 1000 Random Variables to Logistic Regression
+
+
+```{r}
+df  <- read.csv('Dataset_spine.csv', col.names = c('pelvic_incidence', 'pelvic_tilt', 'lumbar_lordosis_angle', 'sacral_slope', 'pelvic_radius', 'degree_spondylolisthesis', 'pelvic_slope', 'Direct_tilt', 'thoracic_slope', 'cervical_tilt', 'sacrum_angle', 'scoliosis_slope', 'classification', ' '))
+
+df$classification = ifelse(df$classification == "Abnormal", 0, 1) #making classification numeric
+df$X. <- NULL #dropping the column with variable descriptions in it
+data = scale(df[, 1:12]) #scaling all except classification variable
+data = data.frame(data)
+data$classification = df$classification #add classification back into scaled dataframe
+
+rand_df = data.frame(matrix(rnorm(1000*nrow(data)), nrow = nrow(data), ncol = 1000))
+data = cbind(data, rand_df)
+
+
+data$rand_int = runif(n=nrow(data), min = 0, max = 1) #random values from uniform distribution
+data2 = data[order(data$rand_int),] #reorder dataframe by random value
+
+data2$group = seq(from = 1, to=5, by=1)
+
+attach(data2)
+
+
+data2$pred_cv = 0
+for (grp in 1:5){
+  train = data2[data2$group != grp, ]
+  test = data2[data2$group == grp,]
+  
+  cv_lr <- glm(classification ~ .,
+                    data=train, family=binomial(link="logit"))
+  cv_lr_pred = predict(cv_lr, test, type = 'response')
+  data2$pred_cv[data2$group == grp] = cv_lr_pred
+}
+
+cv_lr_cfr_w1000 = confusionMatrix( predicted = data2$pred_cv, actual = data2$classification)
+cv_lr_cfr_w1000 #with provided random noise
+
+#accuracy score for Cross Validated RandomForest with Provided Random Noise
+acc_cv_lr_w1000 = (cv_lr_cfr_w1000[1,1] + cv_lr_cfr_w1000[2,2])/nrow(data2)
+acc_cv_lr_w1000
+
+
+
+```
+
+
+
+# Add 10 Random Variables to SVM
+
+
+```{r}
+df  <- read.csv('Dataset_spine.csv', col.names = c('pelvic_incidence', 'pelvic_tilt', 'lumbar_lordosis_angle', 'sacral_slope', 'pelvic_radius', 'degree_spondylolisthesis', 'pelvic_slope', 'Direct_tilt', 'thoracic_slope', 'cervical_tilt', 'sacrum_angle', 'scoliosis_slope', 'classification', ' '))
+
+df$classification = ifelse(df$classification == "Abnormal", 0, 1) #making classification numeric
+df$X. <- NULL #dropping the column with variable descriptions in it
+data = scale(df[, 1:12]) #scaling all except classification variable
+data = data.frame(data)
+data$classification = df$classification #add classification back into scaled dataframe
+
+rand_df = data.frame(matrix(rnorm(10*nrow(data)), nrow = nrow(data), ncol = 10))
+data = cbind(data, rand_df)
+
+
+data$rand_int = runif(n=nrow(data), min = 0, max = 1) #random values from uniform distribution
+data2 = data[order(data$rand_int),] #reorder dataframe by random value
+
+data2$group = seq(from = 1, to=5, by=1)
+
+attach(data2)
+
+
+data2$pred_svm = 0
+for (grp in 1:5){
+  train = data2[data2$group != grp, ]
+  test = data2[data2$group == grp,]
+  
+  svm <- svm(classification ~ .,
+                    data=train)
+  cv_svm_pred = predict(svm, test, type = 'response')
+  data2$pred_svm[data2$group == grp] = cv_svm_pred
+}
+
+cv_svm_cfr_w10 = confusionMatrix( predicted = data2$pred_svm, actual = data2$classification)
+cv_svm_cfr_w10 #with provided random noise
+
+#accuracy score for Cross Validated RandomForest with Provided Random Noise
+acc_cv_svm_w10 = (cv_svm_cfr_w10[1,1] + cv_svm_cfr_w10[2,2])/nrow(data2)
+acc_cv_svm_w10
+
+
+
+```
+
+
+
+
+# Add 100 Random Variables to SVM
+
+
+```{r}
+df  <- read.csv('Dataset_spine.csv', col.names = c('pelvic_incidence', 'pelvic_tilt', 'lumbar_lordosis_angle', 'sacral_slope', 'pelvic_radius', 'degree_spondylolisthesis', 'pelvic_slope', 'Direct_tilt', 'thoracic_slope', 'cervical_tilt', 'sacrum_angle', 'scoliosis_slope', 'classification', ' '))
+
+df$classification = ifelse(df$classification == "Abnormal", 0, 1) #making classification numeric
+df$X. <- NULL #dropping the column with variable descriptions in it
+data = scale(df[, 1:12]) #scaling all except classification variable
+data = data.frame(data)
+data$classification = df$classification #add classification back into scaled dataframe
+
+rand_df = data.frame(matrix(rnorm(100*nrow(data)), nrow = nrow(data), ncol = 100))
+data = cbind(data, rand_df)
+
+
+data$rand_int = runif(n=nrow(data), min = 0, max = 1) #random values from uniform distribution
+data2 = data[order(data$rand_int),] #reorder dataframe by random value
+
+data2$group = seq(from = 1, to=5, by=1)
+
+attach(data2)
+
+
+data2$pred_svm = 0
+for (grp in 1:5){
+  train = data2[data2$group != grp, ]
+  test = data2[data2$group == grp,]
+  
+  svm <- svm(classification ~ .,
+                    data=train)
+  cv_svm_pred = predict(svm, test, type = 'response')
+  data2$pred_svm[data2$group == grp] = cv_svm_pred
+}
+
+cv_svm_cfr_w100 = confusionMatrix( predicted = data2$pred_svm, actual = data2$classification)
+cv_svm_cfr_w100 #with provided random noise
+
+#accuracy score for Cross Validated RandomForest with Provided Random Noise
+acc_cv_svm_w100 = (cv_svm_cfr_w100[1,1] + cv_svm_cfr_w100[2,2])/nrow(data2)
+acc_cv_svm_w100
+
+```
+
+# Add 1000 Random Variables to SVM
+
+
+```{r}
+df  <- read.csv('Dataset_spine.csv', col.names = c('pelvic_incidence', 'pelvic_tilt', 'lumbar_lordosis_angle', 'sacral_slope', 'pelvic_radius', 'degree_spondylolisthesis', 'pelvic_slope', 'Direct_tilt', 'thoracic_slope', 'cervical_tilt', 'sacrum_angle', 'scoliosis_slope', 'classification', ' '))
+
+df$classification = ifelse(df$classification == "Abnormal", 0, 1) #making classification numeric
+df$X. <- NULL #dropping the column with variable descriptions in it
+data = scale(df[, 1:12]) #scaling all except classification variable
+data = data.frame(data)
+data$classification = df$classification #add classification back into scaled dataframe
+
+rand_df = data.frame(matrix(rnorm(1000*nrow(data)), nrow = nrow(data), ncol = 1000))
+data = cbind(data, rand_df)
+
+
+data$rand_int = runif(n=nrow(data), min = 0, max = 1) #random values from uniform distribution
+data2 = data[order(data$rand_int),] #reorder dataframe by random value
+
+data2$group = seq(from = 1, to=5, by=1)
+
+attach(data2)
+
+
+data2$pred_svm = 0
+for (grp in 1:5){
+  train = data2[data2$group != grp, ]
+  test = data2[data2$group == grp,]
+  
+  svm <- svm(classification ~ .,
+                    data=train)
+  cv_svm_pred = predict(svm, test, type = 'response')
+  data2$pred_svm[data2$group == grp] = cv_svm_pred
+}
+
+cv_svm_cfr_w1000 = confusionMatrix( predicted = data2$pred_svm, actual = data2$classification)
+cv_svm_cfr_w1000 #with provided random noise
+
+#accuracy score for Cross Validated RandomForest with Provided Random Noise
+acc_cv_svm_w1000 = (cv_svm_cfr_w1000[1,1] + cv_svm_cfr_w1000[2,2])/nrow(data2)
+acc_cv_svm_w1000
+
+
+```
+
+
+
+
+# Add 10 Random Variables to Random Forest
+
+
+```{r}
+df  <- read.csv('Dataset_spine.csv', col.names = c('pelvic_incidence', 'pelvic_tilt', 'lumbar_lordosis_angle', 'sacral_slope', 'pelvic_radius', 'degree_spondylolisthesis', 'pelvic_slope', 'Direct_tilt', 'thoracic_slope', 'cervical_tilt', 'sacrum_angle', 'scoliosis_slope', 'classification', ' '))
+
+df$classification = ifelse(df$classification == "Abnormal", 0, 1) #making classification numeric
+df$X. <- NULL #dropping the column with variable descriptions in it
+data = scale(df[, 1:12]) #scaling all except classification variable
+data = data.frame(data)
+data$classification = df$classification #add classification back into scaled dataframe
+
+rand_df = data.frame(matrix(rnorm(10*nrow(data)), nrow = nrow(data), ncol = 10))
+data = cbind(data, rand_df)
+
+
+data$rand_int = runif(n=nrow(data), min = 0, max = 1) #random values from uniform distribution
+data2 = data[order(data$rand_int),] #reorder dataframe by random value
+
+data2$group = seq(from = 1, to=5, by=1)
+
+attach(data2)
+
+
+data2$pred_rf = 0
+for (grp in 1:5){
+  train = data2[data2$group != grp, ]
+  test = data2[data2$group == grp,]
+  
+  rf <- randomForest(classification ~ .,
+                    data=train)
+  cv_rf_pred = predict(rf, test, type = 'response')
+  data2$pred_rf[data2$group == grp] = cv_rf_pred
+}
+
+cv_rf_cfr_w10 = confusionMatrix( predicted = data2$pred_rf, actual = data2$classification)
+cv_rf_cfr_w10 #with provided random noise
+
+#accuracy score for Cross Validated RandomForest with Provided Random Noise
+acc_cv_rf_w10 = (cv_rf_cfr_w10[1,1] + cv_rf_cfr_w10[2,2])/nrow(data2)
+acc_cv_rf_w10
+
+
+#grid search using the predictions as possible values. maximizing accuracy score. returns optimal cutoff as op
+li = c()
+for (val in data2$pred_rf){
+  cf = confusionMatrix(data2$classification, data2$pred_rf, cutoff = val)
+  acc = (cf[1,1] + cf[2,2])/nrow(data2)
+  li = c(li, acc)
+  max1 = max(li)
+  ind = match(max1, li)
+  op = data2$pred_rf[ind]
+}
+
+op
+#ideal cutoff is 0.3409
+
+op_cv_rf_cf_10 = confusionMatrix(data2$classification, data2$pred_rf, cutoff = op) 
+op_cv_rf_cf_10
+
+#optimal Accuracy Score for RF
+op_cv_acc_rf_10 = (op_cv_rf_cf_10[1,1] + op_cv_rf_cf_10[2,2])/nrow(data2)
+op_cv_acc_rf_10
+
+
+```
+# Add 100 Random Variables to Random Forest
+
+```{r}
+df  <- read.csv('Dataset_spine.csv', col.names = c('pelvic_incidence', 'pelvic_tilt', 'lumbar_lordosis_angle', 'sacral_slope', 'pelvic_radius', 'degree_spondylolisthesis', 'pelvic_slope', 'Direct_tilt', 'thoracic_slope', 'cervical_tilt', 'sacrum_angle', 'scoliosis_slope', 'classification', ' '))
+
+df$classification = ifelse(df$classification == "Abnormal", 0, 1) #making classification numeric
+df$X. <- NULL #dropping the column with variable descriptions in it
+data = scale(df[, 1:12]) #scaling all except classification variable
+data = data.frame(data)
+data$classification = df$classification #add classification back into scaled dataframe
+
+rand_df = data.frame(matrix(rnorm(100*nrow(data)), nrow = nrow(data), ncol = 100))
+data = cbind(data, rand_df)
+
+
+data$rand_int = runif(n=nrow(data), min = 0, max = 1) #random values from uniform distribution
+data2 = data[order(data$rand_int),] #reorder dataframe by random value
+
+data2$group = seq(from = 1, to=5, by=1)
+
+attach(data2)
+
+
+data2$pred_rf = 0
+for (grp in 1:5){
+  train = data2[data2$group != grp, ]
+  test = data2[data2$group == grp,]
+  
+  rf <- randomForest(classification ~ .,
+                    data=train)
+  cv_rf_pred = predict(rf, test, type = 'response')
+  data2$pred_rf[data2$group == grp] = cv_rf_pred
+}
+
+cv_rf_cfr_w100 = confusionMatrix( predicted = data2$pred_rf, actual = data2$classification)
+cv_rf_cfr_w100 #with provided random noise
+
+#accuracy score for Cross Validated RandomForest with Provided Random Noise
+acc_cv_rf_w100 = (cv_rf_cfr_w100[1,1] + cv_rf_cfr_w100[2,2])/nrow(data2)
+acc_cv_rf_w100
+
+#grid search using the predictions as possible values. maximizing accuracy score. returns optimal cutoff as op
+li = c()
+for (val in data2$pred_rf){
+  cf = confusionMatrix(data2$classification, data2$pred_rf, cutoff = val)
+  acc = (cf[1,1] + cf[2,2])/nrow(data2)
+  li = c(li, acc)
+  max1 = max(li)
+  ind = match(max1, li)
+  op = data2$pred_rf[ind]
+}
+
+op
+
+
+op_cv_rf_cf_100 = confusionMatrix(data2$classification, data2$pred_rf, cutoff = op) 
+op_cv_rf_cf_100
+
+#optimal Accuracy Score for RF
+op_cv_acc_rf_100 = (op_cv_rf_cf_100[1,1] + op_cv_rf_cf_100[2,2])/nrow(data2)
+op_cv_acc_rf_100
+
+```
+
+# Add 1000 Random Variables to Random Forest
+
+```{r}
+df  <- read.csv('Dataset_spine.csv', col.names = c('pelvic_incidence', 'pelvic_tilt', 'lumbar_lordosis_angle', 'sacral_slope', 'pelvic_radius', 'degree_spondylolisthesis', 'pelvic_slope', 'Direct_tilt', 'thoracic_slope', 'cervical_tilt', 'sacrum_angle', 'scoliosis_slope', 'classification', ' '))
+
+df$classification = ifelse(df$classification == "Abnormal", 0, 1) #making classification numeric
+df$X. <- NULL #dropping the column with variable descriptions in it
+data = scale(df[, 1:12]) #scaling all except classification variable
+data = data.frame(data)
+data$classification = df$classification #add classification back into scaled dataframe
+
+rand_df = data.frame(matrix(rnorm(1000*nrow(data)), nrow = nrow(data), ncol = 1000))
+data = cbind(data, rand_df)
+
+
+data$rand_int = runif(n=nrow(data), min = 0, max = 1) #random values from uniform distribution
+data2 = data[order(data$rand_int),] #reorder dataframe by random value
+
+data2$group = seq(from = 1, to=5, by=1)
+
+attach(data2)
+
+
+data2$pred_rf = 0
+for (grp in 1:5){
+  train = data2[data2$group != grp, ]
+  test = data2[data2$group == grp,]
+  
+  rf <- randomForest(classification ~ .,
+                    data=train)
+  cv_rf_pred = predict(rf, test, type = 'response')
+  data2$pred_rf[data2$group == grp] = cv_rf_pred
+}
+
+cv_rf_cfr_w1000 = confusionMatrix( predicted = data2$pred_rf, actual = data2$classification)
+cv_rf_cfr_w1000 #with provided random noise
+
+
+acc_cv_rf_w1000 = (cv_rf_cfr_w1000[1,1] + cv_rf_cfr_w1000[2,2])/nrow(data2)
+acc_cv_rf_w1000
+
+#grid search using the predictions as possible values. maximizing accuracy score. returns optimal cutoff as op
+li = c()
+for (val in data2$pred_rf){
+  cf = confusionMatrix(data2$classification, data2$pred_rf, cutoff = val)
+  acc = (cf[1,1] + cf[2,2])/nrow(data2)
+  li = c(li, acc)
+  max1 = max(li)
+  ind = match(max1, li)
+  op = data2$pred_rf[ind]
+}
+
+op
+#ideal cutoff is 0.3409
+
+op_cv_rf_cf_1000 = confusionMatrix(data2$classification, data2$pred_rf, cutoff = op) 
+op_cv_rf_cf_1000
+
+#optimal Accuracy Score for RF
+op_cv_acc_rf_1000 = (op_cv_rf_cf_1000[1,1] + op_cv_rf_cf_1000[2,2])/nrow(data2)
+op_cv_acc_rf_1000
+
+```
+
+# TO-DO LIST
+
+```{r}
+#DONE(ish)
+#standardization for predictor variables
+#look up how to find important predictor variables for SVM and RF - not really possible for SVM
+#look for Dr. Phil's code from 327 that determines optimal cutoff for LR
+#use predicted values as values in a grid search for optimal cutoff
+#use normal distribution for adding in random noise, mean = 0, sd = 1
+#add in provided random noise, then add in 10 more, 100 more, then 1000 more
+#for the 1000 try forward stepwise for logistic
+
+#TO DO
+#odds ratio to compare performance of models
+#interaction effects for Logistic Regression and look into others
+
+
+
+
+```
+

@@ -1,0 +1,400 @@
+---
+title: "Senior Project Support Vector Machine"
+author: "Michael Streyle"
+date: "October 13th, 2018"
+output: word_document
+editor_options: 
+chunk_output_type: console
+---
+  
+```{r echo=FALSE}
+```
+
+
+```{r echo=FALSE}
+
+setwd("C:/Users/Michael Streyle/Desktop/Senior Project") #change this when i switch computers
+#setwd("C:/Users/Michael/Desktop/Senior Project")
+set.seed(12)
+
+data1  <- read.csv('Dataset_spine.csv', col.names = c('pelvic_incidence', 'pelvic_tilt', 'lumbar_lordosis_angle', 'sacral_slope', 'pelvic_radius', 'degree_spondylolisthesis', 'pelvic_slope', 'Direct_tilt', 'thoracic_slope', 'cervical_tilt', 'sacrum_angle', 'scoliosis_slope', 'classification', ' '))
+
+
+data1$X. <- NULL #dropping the column with variable descriptions in it
+data = scale(data1[, 1:12]) #scaling all except classification variable
+data = data.frame(data)
+data$classification = data1$classification #add classification back into scaled dataframe
+data$class = ifelse(data$classification == "Abnormal", 0, 1) #making classification numeric
+
+#these are the packages I use:
+
+# library(ModelMetrics) old use for confusion matrices. wasnt working for factor columns
+library(e1071) #SVM
+library(randomForest)
+library(caret) #for confusion matrices
+
+attach(data)
+
+```
+
+# Initial Model
+
+
+
+```{r echo=FALSE}
+#make train and test set
+smp_size <- floor(0.8 * nrow(data))
+set.seed(12)
+train_ind <- sample(seq_len(nrow(data)), size = smp_size)
+svm_train <- data[train_ind, ]
+svm_test <- data[-train_ind, ]
+
+#Fit a model. The function syntax is very similar to lm function
+ 
+model_svm <- svm(classification ~ pelvic_tilt + pelvic_incidence + lumbar_lordosis_angle + sacral_slope + pelvic_radius + degree_spondylolisthesis, data = svm_train, probability = T)
+
+
+#Use the predictions on the data
+pred <- predict(model_svm, svm_test, probability = T)
+svm_test$svm_pred = pred
+
+plot(y=svm_test$class, x=attr(svm_test$svm_pred, "probabilities")[,2], main = "Probability vs Class for Initial SVM", xlab = "Predicted Probability of Normal", ylab="Class (0=Abnormal, 1=Normal)")
+lines(lowess(y=svm_test$class, x=attr(svm_test$svm_pred, "probabilities")[,2]))
+
+
+svm_cf = caret::confusionMatrix(data = svm_test$svm_pred, reference = svm_test$classification) 
+svm_cf
+
+
+#tune initial model
+
+tuned_parameters <- tune.svm(classification ~ pelvic_tilt + pelvic_incidence + lumbar_lordosis_angle + sacral_slope + pelvic_radius + degree_spondylolisthesis, data = svm_train, gamma = 10^(-5:-1), cost = 10^(-3:1))
+
+summary(tuned_parameters )
+
+tune_model_svm <- svm(classification ~ pelvic_tilt + pelvic_incidence + lumbar_lordosis_angle + sacral_slope + pelvic_radius + degree_spondylolisthesis, data = svm_train, gamma = 0.1, cost= 1, probability=T)
+
+pred2 <- predict(tune_model_svm, svm_test, probability = T)
+svm_test$svm_pred2 = pred2
+
+
+tune_svm_cf = caret::confusionMatrix(data = svm_test$svm_pred2, reference = svm_test$classification) 
+tune_svm_cf
+
+plot(y=svm_test$class, x=attr(svm_test$svm_pred2, "probabilities")[,2], main = "Probability vs Class for Tuned Initial SVM", xlab = "Predicted Probability of Normal", ylab="Class (0=Abnormal, 1=Normal)")
+lines(lowess(y=svm_test$class, x=attr(svm_test$svm_pred2, "probabilities")[,2]))
+
+```
+
+
+# Initial Model with Cross-Validation
+
+
+
+```{r echo=FALSE}
+set.seed(12)
+data$rand_int = runif(n=nrow(data), min = 0, max = 1) #random values from uniform distribution
+data2 = data[order(data$rand_int),] #reorder dataframe by random value
+
+data2$group = seq(from = 1, to=5, by=1)
+
+attach(data2)
+
+data2$pred_svm = 0
+data2$pred_class = as.factor(c("Abnormal", "Normal"))
+#find best parameters
+tuned = tune.svm(classification ~ pelvic_tilt + pelvic_incidence + lumbar_lordosis_angle + 
+                     sacral_slope + pelvic_radius + degree_spondylolisthesis, data = data2, gamma = 10^(-5:-1), cost = 10^(-3:1), tunecontrol=tune.control(cross=5))
+tuned$best.parameters
+
+#train with cross-validation
+for (grp in 1:5){
+  train = data2[data2$group != grp, ]
+  test = data2[data2$group == grp,]
+  
+  cv_svm <- svm(classification ~ pelvic_tilt + pelvic_incidence + lumbar_lordosis_angle + 
+                     sacral_slope + pelvic_radius + degree_spondylolisthesis, data = train, gamma=0.1, cost=10, probability = T)
+
+  cv_svm_pred = attr(predict(cv_svm, test, probability = T), "probabilities")[,1]
+  data2$pred_svm[data2$group == grp] = cv_svm_pred
+  
+  cv_svm_class = predict(cv_svm, test)
+  data2$pred_class[data2$group == grp] = cv_svm_class
+}
+
+
+cv_svm_cfr = caret::confusionMatrix( data = data2$pred_class, reference = data2$classification)
+cv_svm_cfr
+
+
+plot(y=data2$class, x=data2$pred_svm, main = "Probability vs Class for Tuned CV SVM", xlab = "Predicted Probability of Normal", ylab="Class (0=Abnormal, 1=Normal)")
+lines(lowess(y=data2$class, x=data2$pred_svm))
+
+
+```
+
+# Add Provided Random Noise
+
+
+
+```{r echo=FALSE}
+
+set.seed(12)
+df  <- read.csv('Dataset_spine.csv', col.names = c('pelvic_incidence', 'pelvic_tilt', 'lumbar_lordosis_angle', 'sacral_slope', 'pelvic_radius', 'degree_spondylolisthesis', 'pelvic_slope', 'Direct_tilt', 'thoracic_slope', 'cervical_tilt', 'sacrum_angle', 'scoliosis_slope', 'classification', ' '))
+
+df$class = ifelse(df$classification == "Abnormal", 0, 1) #making classification numeric
+df$X. <- NULL #dropping the column with variable descriptions in it
+
+
+
+data = scale(df[, 1:12]) #scaling all except classification variable
+data = data.frame(data)
+data$classification = df$classification #add classification back into scaled dataframe
+data$class = df$class
+set.seed(12)
+data$rand_int = runif(n=nrow(data), min = 0, max = 1) #random values from uniform distribution
+data2 = data[order(data$rand_int),] #reorder dataframe by random value
+
+data2$group = seq(from = 1, to=5, by=1)
+data2$pred_class = as.factor(c('Abnormal', 'Normal'))
+data2$pred_svm =0
+attach(data2)
+
+tuned = tune.svm(classification ~ . - class - rand_int - group - pred_class - pred_svm, data = data2, gamma = 10^(-5:-1), cost = 10^(-3:1), tunecontrol=tune.control(cross=5))
+tuned$best.parameters
+
+for (grp in 1:5){
+  train = data2[data2$group != grp, ]
+  test = data2[data2$group == grp,]
+  
+  svm <- svm(classification ~ . - class - rand_int - group - pred_class - pred_svm, gamma=0.01, cost=10,
+                    data=train, probability = T)
+  svm_pred = attr(predict(svm, test, probability = T), "probabilities")[,1]
+  data2$pred_svm[data2$group == grp] = svm_pred
+  
+  svm_class = predict(svm, test)
+  data2$pred_class[data2$group == grp] = svm_class
+}
+
+cv_svm_cfr_wprn = caret::confusionMatrix(data2$pred_class,data2$classification)
+cv_svm_cfr_wprn #with provided random noise
+
+plot(y=data2$class, x=data2$pred_svm, main = "Probability vs Class for Tuned CV w/PRN SVM", xlab = "Predicted Probability of Normal", ylab="Class (0=Abnormal, 1=Normal)")
+lines(lowess(y=data2$class, x=data2$pred_svm))
+
+
+```
+
+
+# Add 10 Random Variables
+
+
+
+```{r echo=FALSE}
+df  <- read.csv('Dataset_spine.csv', col.names = c('pelvic_incidence', 'pelvic_tilt', 'lumbar_lordosis_angle', 'sacral_slope', 'pelvic_radius', 'degree_spondylolisthesis', 'pelvic_slope', 'Direct_tilt', 'thoracic_slope', 'cervical_tilt', 'sacrum_angle', 'scoliosis_slope', 'classification', ' '))
+
+df$class = ifelse(df$classification == "Abnormal", 0, 1) #making classification numeric
+df$X. <- NULL #dropping the column with variable descriptions in it
+data = scale(df[, 1:12]) #scaling all except classification variable
+data = data.frame(data)
+data$classification = df$classification #add classification back into scaled dataframe
+data$class = df$class
+set.seed(12)
+rand_df = data.frame(matrix(rnorm(10*nrow(data) ), nrow = nrow(data), ncol = 10))
+data = cbind(data, rand_df)
+
+
+data$rand_int = runif(n=nrow(data), min = 0, max = 1) #random values from uniform distribution
+data2 = data[order(data$rand_int),] #reorder dataframe by random value
+
+data2$group = seq(from = 1, to=5, by=1)
+data2$pred_class = as.factor(c('Abnormal', 'Normal'))
+data2$pred_svm =0
+attach(data2)
+
+tuned = tune.svm(classification ~ . - class - rand_int - group - pred_class - pred_svm, data = data2, gamma = 10^(-5:-1), cost = 10^(-3:1), tunecontrol=tune.control(cross=5))
+tuned$best.parameters
+
+for (grp in 1:5){
+  train = data2[data2$group != grp, ]
+  test = data2[data2$group == grp,]
+  
+  svm <- svm(classification ~ . - class - rand_int - group - pred_class - pred_svm, gamma=0.01, cost=10,
+                    data=train, probability = T)
+  svm_pred = attr(predict(svm, test, probability = T), "probabilities")[,2]
+  data2$pred_svm[data2$group == grp] = svm_pred
+  
+  svm_class = predict(svm, test)
+  data2$pred_class[data2$group == grp] = svm_class
+}
+
+cv_svm_cfr_w10 = caret::confusionMatrix(data2$pred_class,data2$classification)
+cv_svm_cfr_w10 #with provided random noise
+
+plot(y=data2$class, x=data2$pred_svm, main = "Probability vs Class for Tuned CV w/10 SVM", xlab = "Predicted Probability of Normal", ylab="Class (0=Abnormal, 1=Normal)")
+lines(lowess(y=data2$class, x=data2$pred_svm))
+
+
+```
+
+
+
+
+# Add 100 Random Variables
+
+  
+  
+```{r echo=FALSE}
+set.seed(12)
+df  <- read.csv('Dataset_spine.csv', col.names = c('pelvic_incidence', 'pelvic_tilt', 'lumbar_lordosis_angle', 'sacral_slope', 'pelvic_radius', 'degree_spondylolisthesis', 'pelvic_slope', 'Direct_tilt', 'thoracic_slope', 'cervical_tilt', 'sacrum_angle', 'scoliosis_slope', 'classification', ' '))
+
+df$class = ifelse(df$classification == "Abnormal", 0, 1) #making classification numeric
+df$X. <- NULL #dropping the column with variable descriptions in it
+data = scale(df[, 1:12]) #scaling all except classification variable
+data = data.frame(data)
+data$classification = df$classification #add classification back into scaled dataframe
+data$class = df$class
+set.seed(12)
+rand_df = data.frame(matrix(rnorm(100*nrow(data) ), nrow = nrow(data), ncol = 100))
+data = cbind(data, rand_df)
+
+
+data$rand_int = runif(n=nrow(data), min = 0, max = 1) #random values from uniform distribution
+data2 = data[order(data$rand_int),] #reorder dataframe by random value
+
+data2$group = seq(from = 1, to=5, by=1)
+data2$pred_class = as.factor(c('Abnormal', 'Normal'))
+data2$pred_svm =0
+attach(data2)
+
+tuned = tune.svm(classification ~ . - class - rand_int - group - pred_class - pred_svm, data = data2, gamma = 10^(-5:-1), cost = 10^(-3:1), tunecontrol=tune.control(cross=5))
+tuned$best.parameters
+
+for (grp in 1:5){
+  train = data2[data2$group != grp, ]
+  test = data2[data2$group == grp,]
+  
+  svm <- svm(classification ~ . - class - rand_int - group - pred_class - pred_svm, gamma=0.001, cost=10,
+                    data=train, probability = T)
+  svm_pred = attr(predict(svm, test, probability = T), "probabilities")[,2]
+  data2$pred_svm[data2$group == grp] = svm_pred
+  
+  svm_class = predict(svm, test)
+  data2$pred_class[data2$group == grp] = svm_class
+}
+
+cv_svm_cfr_w100 = caret::confusionMatrix(data2$pred_class,data2$classification)
+cv_svm_cfr_w100 
+
+plot(y=data2$class, x=data2$pred_svm, main = "Probability vs Class for Tuned CV w/100 SVM", xlab = "Predicted Probability of Normal", ylab="Class (0=Abnormal, 1=Normal)")
+lines(lowess(y=data2$class, x=data2$pred_svm))
+
+```
+
+
+# Add 500 Random Variables
+
+
+```{r echo=FALSE}
+set.seed(12)
+df  <- read.csv('Dataset_spine.csv', col.names = c('pelvic_incidence', 'pelvic_tilt', 'lumbar_lordosis_angle', 'sacral_slope', 'pelvic_radius', 'degree_spondylolisthesis', 'pelvic_slope', 'Direct_tilt', 'thoracic_slope', 'cervical_tilt', 'sacrum_angle', 'scoliosis_slope', 'classification', ' '))
+
+df$class = ifelse(df$classification == "Abnormal", 0, 1) #making classification numeric
+df$X. <- NULL #dropping the column with variable descriptions in it
+data = scale(df[, 1:12]) #scaling all except classification variable
+data = data.frame(data)
+data$classification = df$classification #add classification back into scaled dataframe
+data$class = df$class
+set.seed(12)
+rand_df = data.frame(matrix(rnorm(500*nrow(data) ), nrow = nrow(data), ncol = 500))
+data = cbind(data, rand_df)
+
+
+data$rand_int = runif(n=nrow(data), min = 0, max = 1) #random values from uniform distribution
+data2 = data[order(data$rand_int),] #reorder dataframe by random value
+
+data2$group = seq(from = 1, to=5, by=1)
+data2$pred_class = as.factor(c('Abnormal', 'Normal'))
+data2$pred_svm =0
+attach(data2)
+
+tuned = tune.svm(classification ~ . - class - rand_int - group - pred_class - pred_svm, data = data2, gamma = 10^(-5:-1), cost = 10^(-3:1), tunecontrol=tune.control(cross=5))
+tuned$best.parameters
+
+for (grp in 1:5){
+  train = data2[data2$group != grp, ]
+  test = data2[data2$group == grp,]
+  
+  svm <- svm(classification ~ . - class - rand_int - group - pred_class - pred_svm, gamma=1e-05, cost=0.001,
+                    data=train, probability = T)
+  svm_pred = attr(predict(svm, test, probability = T), "probabilities")[,1]
+  data2$pred_svm[data2$group == grp] = svm_pred
+  
+  svm_class = predict(svm, test)
+  data2$pred_class[data2$group == grp] = svm_class
+}
+
+cv_svm_cfr_w500 = caret::confusionMatrix(data2$pred_class,data2$classification)
+cv_svm_cfr_w500 
+
+plot(y=data2$class, x=data2$pred_svm, main = "Probability vs Class for Tuned CV w/500 SVM", xlab = "Predicted Probability of Normal", ylab="Class (0=Abnormal, 1=Normal)")
+lines(lowess(y=data2$class, x=data2$pred_svm))
+
+```
+
+
+
+# Add 1000 Random Variables
+
+
+
+```{r echo=FALSE}
+set.seed(12)
+df  <- read.csv('Dataset_spine.csv', col.names = c('pelvic_incidence', 'pelvic_tilt', 'lumbar_lordosis_angle', 'sacral_slope', 'pelvic_radius', 'degree_spondylolisthesis', 'pelvic_slope', 'Direct_tilt', 'thoracic_slope', 'cervical_tilt', 'sacrum_angle', 'scoliosis_slope', 'classification', ' '))
+
+df$class = ifelse(df$classification == "Abnormal", 0, 1) #making classification numeric
+df$X. <- NULL #dropping the column with variable descriptions in it
+data = scale(df[, 1:12]) #scaling all except classification variable
+data = data.frame(data)
+data$classification = df$classification #add classification back into scaled dataframe
+data$class = df$class
+set.seed(12)
+rand_df = data.frame(matrix(rnorm(1000*nrow(data) ), nrow = nrow(data), ncol = 1000))
+data = cbind(data, rand_df)
+
+
+data$rand_int = runif(n=nrow(data), min = 0, max = 1) #random values from uniform distribution
+data2 = data[order(data$rand_int),] #reorder dataframe by random value
+
+data2$group = seq(from = 1, to=5, by=1)
+data2$pred_class = as.factor(c('Abnormal', 'Normal'))
+data2$pred_svm =0
+attach(data2)
+
+tuned = tune.svm(classification ~ . - class - rand_int - group - pred_class - pred_svm, data = data2, gamma = 10^(-5:-1), cost = 10^(-3:1), tunecontrol=tune.control(cross=5))
+tuned$best.parameters
+
+for (grp in 1:5){
+  train = data2[data2$group != grp, ]
+  test = data2[data2$group == grp,]
+  
+  svm <- svm(classification ~ . - class - rand_int - group - pred_class - pred_svm, gamma=0.001, cost=10,
+                    data=train, probability = T)
+  svm_pred = attr(predict(svm, test, probability = T), "probabilities")[,1]
+  data2$pred_svm[data2$group == grp] = svm_pred
+  
+  svm_class = predict(svm, test)
+  data2$pred_class[data2$group == grp] = svm_class
+}
+
+cv_svm_cfr_w1000 = caret::confusionMatrix(data2$pred_class,data2$classification)
+cv_svm_cfr_w1000 
+
+plot(y=data2$class, x=data2$pred_svm, main = "Probability vs Class for Tuned CV w/1000 SVM", xlab = "Predicted Probability of Normal", ylab="Class (0=Abnormal, 1=Normal)")
+lines(lowess(y=data2$class, x=data2$pred_svm))
+
+```
+
+
+
+

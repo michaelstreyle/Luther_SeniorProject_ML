@@ -1,0 +1,776 @@
+---
+title: "Senior Project Logistic Regression"
+author: "Michael Streyle"
+date: "November 5th, 2018"
+output:
+  word_document: default
+  html_document: default
+editor_options: null
+chunk_output_type: console
+---
+  
+```{r global_options, message=FALSE, echo=FALSE, warning = FALSE}
+knitr::opts_chunk$set(comment=NA, message=FALSE, echo=FALSE, warning = FALSE)
+
+```
+
+# Beginning
+
+```{r, Beginning, message=FALSE, echo=FALSE, warning = FALSE}
+set.seed(12)
+setwd("C:/Users/Michael Streyle/Desktop/Senior Project")
+#setwd("C:/Users/Michael/Desktop/Senior Project")
+
+data1  <- read.csv('Dataset_spine.csv', col.names = c('pelvic_incidence', 'pelvic_tilt', 'lumbar_lordosis_angle', 'sacral_slope', 'pelvic_radius', 'degree_spondylolisthesis', 'pelvic_slope', 'Direct_tilt', 'thoracic_slope', 'cervical_tilt', 'sacrum_angle', 'scoliosis_slope', 'classification', ' '))
+
+
+data1$X. <- NULL #dropping the column with variable descriptions in it
+
+
+
+data = scale(data1[, 1:12]) #scaling all except classification variable
+data = data.frame(data)
+data$classification = data1$classification #add classification back into scaled dataframe
+data$class = ifelse(data$classification == "Abnormal", 0, 1) #making classification numeric
+
+#these are the packages I use:
+
+library(ModelMetrics) #simple confusion matrices
+library(e1071) #SVM models
+library(randomForest) #random forest models
+library(caret) #for confusion matrices longer output and factor columns
+
+attach(data)
+
+
+```
+
+
+
+# Initial Model
+
+
+```{r, Initial Model, message=FALSE, echo=FALSE, warning = FALSE}
+#make train and test set
+set.seed(12)
+smp_size <- floor(0.8 * nrow(data))
+train_ind <- sample(seq_len(nrow(data)), size = smp_size)
+lr_train <- data[train_ind, ]
+lr_test <- data[-train_ind, ]
+
+
+#creating a first order model from the training data
+back.logit <- suppressWarnings(glm(classification ~ pelvic_tilt + pelvic_incidence + lumbar_lordosis_angle + sacral_slope + pelvic_radius + degree_spondylolisthesis, data=lr_train, family=binomial(link="logit")))
+
+pred = predict(back.logit, lr_test, type = 'response')
+
+summary(back.logit)
+
+#model with interaction
+logit_int = suppressWarnings(glm(classification ~ pelvic_tilt + pelvic_incidence + lumbar_lordosis_angle + sacral_slope + pelvic_radius + degree_spondylolisthesis + degree_spondylolisthesis:pelvic_radius, data=lr_train, family=binomial(link="logit")))
+#summary(logit_int)
+int_pred = predict(logit_int, lr_test, type= "response")
+
+
+min.model = suppressWarnings(glm(class ~ 1, data=lr_train, family=binomial(link="logit")))
+biggest <- formula(glm(class ~ . - classification,lr_train, family=binomial(link="logit")))
+
+step.logit = step(min.model, direction='forward', scope=biggest, trace = 0)
+step_pred = predict(object = step.logit, lr_test, type='response')
+
+summary(step.logit)
+#interaction plot between dgree_spondylolisthesis and pelvic_radius
+#interaction.plot(x.factor = pelvic_radius, trace.factor = degree_spondylolisthesis, response = classification)
+
+#odds ratios
+#expbetas = exp(back.logit$coefficients)
+#expbetas
+
+
+#confusion matrix for logistic regression without interaction
+lr_test$lr_probs = pred
+lr_cfr = ModelMetrics::confusionMatrix( predicted = lr_test$lr_probs, actual = lr_test$class) 
+lr_cfr
+
+#confusion matrix for logistic regression with interaction
+int_cf = ModelMetrics::confusionMatrix( predicted = int_pred, actual = lr_test$class)
+int_cf
+
+
+#accuracy score for Logistic Regression without interaction
+acc_lr = (lr_cfr[1,1] + lr_cfr[2,2])/nrow(lr_test)
+acc_lr
+
+#accuracy score for LR with interaction
+acc_lr_int = (int_cf[1,1] + int_cf[2,2])/nrow(lr_test)
+acc_lr_int
+
+#confusion matrix for logistic regression with forward stepwise
+lr_test$lr_probs_step = step_pred
+lr_cfr_step = ModelMetrics::confusionMatrix( predicted = lr_test$lr_probs_step, actual = lr_test$class) 
+lr_cfr_step
+
+#accuracy score for forward stepwise model
+acc_lr_step = (lr_cfr_step[1,1] + lr_cfr_step[2,2])/nrow(lr_test)
+acc_lr_step
+
+
+plot(x = step.logit$fitted.values, y= jitter(lr_train$class, amount = .1), main = "Initial Step Model with Lowess Line")
+lines(lowess(x = step.logit$fitted.values, y= jitter(lr_train$class, amount = .1)))
+
+
+```
+
+# Find Optimal Cutoff for Train/Test Initial Model with Forward Stepwise
+
+
+
+```{r, message=FALSE, echo=FALSE, warning = FALSE}
+set.seed(12)
+cutoffs = c()
+accuracies = c()
+train_pred = predict(step.logit, lr_train, type='response')
+probs = as.vector(train_pred)#attr(train_pred, "probabilities")
+for (val in probs){
+  cf = ModelMetrics::confusionMatrix(lr_train$class, probs, cutoff = val)
+  acc = (cf[1,1] + cf[2,2])/nrow(lr_train)
+  accuracies = c(accuracies, acc)
+  cutoffs = c(cutoffs, val)
+}
+
+max1 = max(accuracies)
+ind = match(max1, accuracies)
+op = cutoffs[ind]
+
+test_pred = predict(step.logit, lr_test, type='response')
+
+op_lr = ModelMetrics::confusionMatrix(actual = lr_test$class, predicted = test_pred, cutoff = op)
+op_lr
+
+
+op_acc_lr = (op_lr[1,1] + op_lr[2,2])/nrow(lr_test)
+op_acc_lr
+
+
+```
+
+# Cross-Validation with Initial Model with Optimizing with Set Seed
+
+
+
+```{r, message=FALSE, echo=FALSE, warning = FALSE}
+set.seed(12)
+data$rand_int = runif(n=nrow(data), min = 0, max = 1) #random values from uniform distribution
+data2 = data[order(data$rand_int),] #reorder dataframe by random value
+
+data2$group = seq(from = 1, to=5, by=1)
+#detach(data2)
+data2$pred_prob = 0
+attach(data2)
+
+#Logistic Regression Cross-Validation
+data2$pred_cv = 0
+
+for (grp in 1:5){
+  train = data2[data2$group != grp, ]
+  test = data2[data2$group == grp,]
+  
+  cv_min.model = suppressWarnings(glm(class ~ 1, data=train, family=binomial(link="logit")))
+  
+  biggest <- suppressWarnings(formula(glm(class ~  pelvic_tilt + pelvic_incidence + lumbar_lordosis_angle + sacral_slope + pelvic_radius + degree_spondylolisthesis, train,    family=binomial(link="logit"))))
+
+  step.logit = step(min.model, direction='forward', scope=biggest, trace=0)
+  pred = predict(step.logit, train, type = 'response')
+  cutoffs = c()
+  accuracies = c()
+  for (val in as.vector(pred)){
+  cf = ModelMetrics::confusionMatrix(train$class, as.vector(pred), cutoff = val)
+  acc = (cf[1,1] + cf[2,2])/nrow(train)
+  accuracies = c(accuracies, acc)
+  cutoffs = c(cutoffs, val)
+  }
+
+  max1 = max(accuracies)
+  ind = match(max1, accuracies)
+  op = cutoffs[ind]
+  
+  cv_lr_pred = predict(step.logit, test, type = 'response')
+  data2$pred_prob[data2$group == grp] = cv_lr_pred
+  data2$pred_cv[data2$group == grp] = ifelse(cv_lr_pred < op, 0, 1)
+}
+
+cv_lr_cfr = ModelMetrics::confusionMatrix( predicted = data2$pred_cv, actual = data2$class)
+cv_lr_cfr
+
+#accuracy score for Cross Validated Logistic Regression
+acc_cv_lr = (cv_lr_cfr[1,1] + cv_lr_cfr[2,2])/nrow(data2)
+acc_cv_lr
+
+
+plot(x = data2$pred_prob, y= jitter(data2$class, amount = .1), main = "CV Initial Step Model with Lowess Line")
+lines(lowess(x = data2$pred_prob, y= jitter(data2$class, amount = .1)))
+
+
+```
+
+# Accuracy Distribution of Cross-Validation with Initial Model with Optimizing
+
+
+
+```{r, message=FALSE, echo=FALSE, warning = FALSE}
+# dist_acc = c()
+# 
+# for (n in 1:100){
+#   data$rand_int = runif(n=nrow(data), min = 0, max = 1) #random values from uniform distribution
+#   data2 = data[order(data$rand_int),] #reorder dataframe by random value
+#   
+#   data2$group = seq(from = 1, to=5, by=1)
+#   
+#   attach(data2)
+#   
+#   #Logistic Regression Cross-Validation
+#   data2$pred_cv = 0
+#   
+#   for (grp in 1:5){
+#     train = data2[data2$group != grp, ]
+#     test = data2[data2$group == grp,]
+#     
+#     cv_min.model = glm(class ~ 1, data=train, family=binomial(link="logit"))
+#     
+#     biggest <- formula(glm(class ~  pelvic_tilt + pelvic_incidence + lumbar_lordosis_angle + sacral_slope + pelvic_radius + degree_spondylolisthesis, train,    family=binomial(link="logit")))
+#   
+#     step.logit = step(min.model, direction='forward', scope=biggest)
+#     pred = predict(step.logit, train, type = 'response')
+#     cutoffs = c()
+#     accuracies = c()
+#     for (val in as.vector(pred)){
+#     cf = ModelMetrics::confusionMatrix(train$class, as.vector(pred), cutoff = val)
+#     acc = (cf[1,1] + cf[2,2])/nrow(train)
+#     accuracies = c(accuracies, acc)
+#     cutoffs = c(cutoffs, val)
+#     }
+#   
+#     max1 = max(accuracies)
+#     ind = match(max1, accuracies)
+#     op = cutoffs[ind]
+#     
+#     cv_lr_pred = predict(step.logit, test, type = 'response')
+#     
+#     data2$pred_cv[data2$group == grp] = ifelse(cv_lr_pred < op, 0, 1)
+#   }
+#   
+#   cv_lr_cfr = ModelMetrics::confusionMatrix( predicted = data2$pred_cv, actual = data2$class)
+#   cv_lr_cfr
+#   
+#   #accuracy score for Cross Validated Logistic Regression
+#   acc_cv_lr = (cv_lr_cfr[1,1] + cv_lr_cfr[2,2])/nrow(data2)
+#   acc_cv_lr
+#   
+#   dist_acc = c(dist_acc, acc_cv_lr)
+# }
+# 
+# 
+# hist(dist_acc)
+
+```
+
+
+# Add Provided Random Noise 
+
+
+```{r, message=FALSE, echo=FALSE, warning = FALSE}
+set.seed(12)
+df  <- read.csv('Dataset_spine.csv', col.names = c('pelvic_incidence', 'pelvic_tilt', 'lumbar_lordosis_angle', 'sacral_slope', 'pelvic_radius', 'degree_spondylolisthesis', 'pelvic_slope', 'Direct_tilt', 'thoracic_slope', 'cervical_tilt', 'sacrum_angle', 'scoliosis_slope', 'classification', ' '))
+
+df$class = ifelse(df$classification == "Abnormal", 0, 1) #making classification numeric
+df$X. <- NULL #dropping the column with variable descriptions in it
+
+
+
+data = scale(df[, 1:12]) #scaling all except classification variable
+data = data.frame(data)
+data$class = df$class #add classification back into scaled dataframe
+data$classification = df$classification
+
+data$rand_int = runif(n=nrow(data), min = 0, max = 1) #random values from uniform distribution
+data2 = data[order(data$rand_int),] #reorder dataframe by random value
+
+data2$group = seq(from = 1, to=5, by=1)
+data2$pred_cv = 0
+detach(data2)
+data2$pred_prob = 0
+attach(data2)
+
+
+for (grp in 1:5){
+  train = data2[data2$group != grp, ]
+  test = data2[data2$group == grp,]
+  
+  min.model = suppressWarnings(glm(class ~ 1, data=train, family=binomial(link="logit")))
+  biggest <- suppressWarnings(formula(glm(class ~ . - classification - pred_prob - pred_cv - rand_int - group, data = train,    family=binomial(link="logit"))))
+
+  step.logit = step(min.model, direction='forward', scope=biggest, trace=0)
+  pred = predict(step.logit, train, type = 'response')
+  cutoffs = c()
+  accuracies = c()
+  for (val in as.vector(pred)){
+    cf = ModelMetrics::confusionMatrix(train$class, as.vector(pred), cutoff = val)
+    acc = (cf[1,1] + cf[2,2])/nrow(train)
+    accuracies = c(accuracies, acc)
+    cutoffs = c(cutoffs, val)
+  }
+
+  max1 = max(accuracies)
+  ind = match(max1, accuracies)
+  op = cutoffs[ind]
+  
+  cv_lr_pred = predict(step.logit, test, type = 'response')
+  data2$pred_prob[data2$group == grp] = cv_lr_pred
+  data2$pred_cv[data2$group == grp] = ifelse(cv_lr_pred < op, 0, 1)
+}
+
+
+cv_lr_cfr_wprn = ModelMetrics::confusionMatrix( predicted = data2$pred_cv, actual = data2$class)
+cv_lr_cfr_wprn #with provided random noise
+
+#accuracy score for Cross Validated RandomForest with Provided Random Noise
+acc_cv_lr_wprn = (cv_lr_cfr_wprn[1,1] + cv_lr_cfr_wprn[2,2])/nrow(data2)
+acc_cv_lr_wprn
+
+plot(x = data2$pred_prob, y= jitter(data2$class, amount = .1), main = "CV/Step w/PRN Model with Lowess Line")
+lines(lowess(x = data2$pred_prob, y= jitter(data2$class, amount = .1)))
+
+```
+
+# Add 10 Random Variables
+
+
+```{r, message=FALSE, echo=FALSE, warning = FALSE}
+set.seed(12)
+df  <- read.csv('Dataset_spine.csv', col.names = c('pelvic_incidence', 'pelvic_tilt', 'lumbar_lordosis_angle', 'sacral_slope', 'pelvic_radius', 'degree_spondylolisthesis', 'pelvic_slope', 'Direct_tilt', 'thoracic_slope', 'cervical_tilt', 'sacrum_angle', 'scoliosis_slope', 'classification', ' '))
+
+df$class = ifelse(df$classification == "Abnormal", 0, 1) #making classification numeric
+df$X. <- NULL #dropping the column with variable descriptions in it
+data = scale(df[, 1:12]) #scaling all except classification variable
+data = data.frame(data)
+data$classification = df$classification #add classification back into scaled dataframe
+data$class = df$class
+rand_df = data.frame(matrix(rnorm(10*nrow(data)), nrow = nrow(data), ncol = 10))
+data = cbind(data, rand_df)
+
+
+data$rand_int = runif(n=nrow(data), min = 0, max = 1) #random values from uniform distribution
+data2 = data[order(data$rand_int),] #reorder dataframe by random value
+
+data2$group = seq(from = 1, to=5, by=1)
+data2$pred_cv = 0
+detach(data2)
+data2$pred_prob = 0
+attach(data2)
+
+
+for (grp in 1:5){
+  train = data2[data2$group != grp, ]
+  test = data2[data2$group == grp,]
+  
+  min.model = suppressWarnings(glm(class ~ 1, data=train, family=binomial(link="logit")))
+  biggest <- suppressWarnings(formula(glm(class ~ . - classification - pred_cv - pred_prob - rand_int - group, data = train,    family=binomial(link="logit"))))
+
+  step.logit = step(min.model, direction='forward', scope=biggest, trace=0)
+  pred = predict(step.logit, train, type = 'response')
+  cutoffs = c()
+  accuracies = c()
+  for (val in as.vector(pred)){
+    cf = ModelMetrics::confusionMatrix(train$class, as.vector(pred), cutoff = val)
+    acc = (cf[1,1] + cf[2,2])/nrow(train)
+    accuracies = c(accuracies, acc)
+    cutoffs = c(cutoffs, val)
+  }
+
+  max1 = max(accuracies)
+  ind = match(max1, accuracies)
+  op = cutoffs[ind]
+  
+  cv_lr_pred = predict(step.logit, test, type = 'response')
+  data2$pred_prob[data2$group == grp] = cv_lr_pred
+  data2$pred_cv[data2$group == grp] = ifelse(cv_lr_pred < op, 0, 1)
+}
+
+
+
+cv_lr_cfr_w10 = ModelMetrics::confusionMatrix( predicted = data2$pred_cv, actual = data2$class)
+cv_lr_cfr_w10 
+
+#accuracy score for Cross Validated RandomForest with 10 additional random variables
+acc_cv_lr_w10 = (cv_lr_cfr_w10[1,1] + cv_lr_cfr_w10[2,2])/nrow(data2)
+acc_cv_lr_w10
+
+plot(x = data2$pred_prob, y= jitter(data2$class, amount = .1), main = "CV/Step w/10 Model with Lowess Line", xlab="Predicted Probability", ylab='Actual Class (0=Abnormal, 1=Normal)')
+lines(lowess(x = data2$pred_prob, y= jitter(data2$class, amount = .1)))
+
+```
+
+# Add 100 Random Variables with set seed
+
+
+
+```{r, message=FALSE, echo=FALSE, warning = FALSE}
+set.seed(12)
+df  <- read.csv('Dataset_spine.csv', col.names = c('pelvic_incidence', 'pelvic_tilt', 'lumbar_lordosis_angle', 'sacral_slope', 'pelvic_radius', 'degree_spondylolisthesis', 'pelvic_slope', 'Direct_tilt', 'thoracic_slope', 'cervical_tilt', 'sacrum_angle', 'scoliosis_slope', 'classification', ' '))
+
+df$class = ifelse(df$classification == "Abnormal", 0, 1) #making classification numeric
+df$X. <- NULL #dropping the column with variable descriptions in it
+data = scale(df[, 1:12]) #scaling all except classification variable
+data = data.frame(data)
+data$classification = df$classification #add classification back into scaled dataframe
+data$class = df$class
+rand_df = data.frame(matrix(rnorm(100*nrow(data)), nrow = nrow(data), ncol = 100))
+data = cbind(data, rand_df)
+
+
+data$rand_int = runif(n=nrow(data), min = 0, max = 1) #random values from uniform distribution
+data2 = data[order(data$rand_int),] #reorder dataframe by random value
+
+data2$group = seq(from = 1, to=5, by=1)
+data2$pred_cv = 0
+
+detach(data2)
+data2$pred_prob = 0
+attach(data2)
+
+
+
+for (grp in 1:5){
+  train = data2[data2$group != grp, ]
+  test = data2[data2$group == grp,]
+  
+  min.model = suppressWarnings(glm(class ~ 1, data=train, family=binomial(link="logit")))
+  biggest <- suppressWarnings(formula(glm(class ~ . - classification - pred_prob - pred_cv - rand_int - group, data = train,    family=binomial(link="logit"))))
+
+  step.logit = step(min.model, direction='forward', scope=biggest, trace=0)
+  pred = predict(step.logit, train, type = 'response')
+  cutoffs = c()
+  accuracies = c()
+  for (val in as.vector(pred)){
+    cf = ModelMetrics::confusionMatrix(train$class, as.vector(pred), cutoff = val)
+    acc = (cf[1,1] + cf[2,2])/nrow(train)
+    accuracies = c(accuracies, acc)
+    cutoffs = c(cutoffs, val)
+  }
+
+  max1 = max(accuracies)
+  ind = match(max1, accuracies)
+  op = cutoffs[ind]
+  
+  cv_lr_pred = predict(step.logit, test, type = 'response')
+  data2$pred_prob[data2$group == grp] = cv_lr_pred
+  data2$pred_cv[data2$group == grp] = ifelse(cv_lr_pred < op, 0, 1)
+}
+
+
+
+cv_lr_cfr_w100 = ModelMetrics::confusionMatrix( predicted = data2$pred_cv, actual = data2$class)
+cv_lr_cfr_w100 #with provided random noise
+
+#accuracy score for Cross Validated RandomForest with Provided Random Noise
+acc_cv_lr_w100 = (cv_lr_cfr_w100[1,1] + cv_lr_cfr_w100[2,2])/nrow(data2)
+acc_cv_lr_w100
+
+plot(x = data2$pred_prob, y= jitter(data2$class, amount = .1), main = "CV/Step w/100 Model with Lowess Line", xlab="Predicted Probability", ylab="Actual Class (0=Abnormal, 1=Normal)")
+lines(lowess(x = data2$pred_prob, y= jitter(data2$class, amount = .1)))
+
+
+#PCA for 100 random variables
+myvars <- names(data2) %in% c("classification","class", "rand_int", "pred_cv", "group") #remove classificaiton
+newdata = data2[!myvars]
+
+prin_comp = prcomp(newdata, scale.= T)
+names(prin_comp)
+prin_comp$rotation[1:5,1:4]
+biplot(prin_comp, scale = 0)
+std_dev <- prin_comp$sdev
+pr_var <- std_dev^2
+pr_var[1:10]
+prop_varex <- pr_var/sum(pr_var)
+prop_varex[1:20]
+
+
+plot(prop_varex, xlab = "Principal Component",
+             ylab = "Proportion of Variance Explained",
+             type = "b", main='Variance Explained 100')
+
+plot(cumsum(prop_varex), xlab = "Principal Component",
+              ylab = "Cumulative Proportion of Variance Explained",
+              type = "b", main= "Cumulative Variance Explained 100")
+
+
+
+
+```
+
+# Accuracy Distribution for 100 Random Variables
+
+
+
+```{r, message=FALSE, echo=FALSE, warning = FALSE}
+
+# acc_100_dist = c()
+# 
+# for (n in 1:100){
+#   df  <- read.csv('Dataset_spine.csv', col.names = c('pelvic_incidence', 'pelvic_tilt', 'lumbar_lordosis_angle', 'sacral_slope', 'pelvic_radius', 'degree_spondylolisthesis', 'pelvic_slope', 'Direct_tilt', 'thoracic_slope', 'cervical_tilt', 'sacrum_angle', 'scoliosis_slope', 'classification', ' '))
+#   
+#   df$class = ifelse(df$classification == "Abnormal", 0, 1) #making classification numeric
+#   df$X. <- NULL #dropping the column with variable descriptions in it
+#   data = scale(df[, 1:12]) #scaling all except classification variable
+#   data = data.frame(data)
+#   data$classification = df$classification #add classification back into scaled dataframe
+#   data$class = df$class
+#   rand_df = data.frame(matrix(rnorm(100*nrow(data)), nrow = nrow(data), ncol = 100))
+#   data = cbind(data, rand_df)
+#   
+#   
+#   data$rand_int = runif(n=nrow(data), min = 0, max = 1) #random values from uniform distribution
+#   data2 = data[order(data$rand_int),] #reorder dataframe by random value
+#   
+#   data2$group = seq(from = 1, to=5, by=1)
+#   data2$pred_cv = 0
+#   attach(data2)
+#   
+#   
+#   
+#   for (grp in 1:5){
+#     train = data2[data2$group != grp, ]
+#     test = data2[data2$group == grp,]
+#     
+#     min.model = glm(class ~ 1, data=train, family=binomial(link="logit"))
+#     biggest <- formula(glm(class ~ . - classification - pred_cv - rand_int - group, data = train,    family=binomial(link="logit")))
+#   
+#     step.logit = step(min.model, direction='forward', scope=biggest)
+#     pred = predict(step.logit, train, type = 'response')
+#     cutoffs = c()
+#     accuracies = c()
+#     for (val in as.vector(pred)){
+#       cf = ModelMetrics::confusionMatrix(train$class, as.vector(pred), cutoff = val)
+#       acc = (cf[1,1] + cf[2,2])/nrow(train)
+#       accuracies = c(accuracies, acc)
+#       cutoffs = c(cutoffs, val)
+#     }
+#   
+#     max1 = max(accuracies)
+#     ind = match(max1, accuracies)
+#     op = cutoffs[ind]
+#     
+#     cv_lr_pred = predict(step.logit, test, type = 'response')
+#     
+#     data2$pred_cv[data2$group == grp] = ifelse(cv_lr_pred < op, 0, 1)
+#   }
+#   
+#   
+#   
+#   cv_lr_cfr_w100 = ModelMetrics::confusionMatrix( predicted = data2$pred_cv, actual = data2$class)
+#   cv_lr_cfr_w100 #with provided random noise
+#   
+#   #accuracy score for Cross Validated RandomForest with Provided Random Noise
+#   acc_cv_lr_w100 = (cv_lr_cfr_w100[1,1] + cv_lr_cfr_w100[2,2])/nrow(data2)
+#   acc_cv_lr_w100
+#   acc_100_dist = c(acc_100_dist, acc_cv_lr_w100)
+# }
+# 
+# 
+# hist(acc_100_dist)
+
+```
+
+
+# Add 500 Random Variables
+
+```{r, message=FALSE, echo=FALSE, warning = FALSE}
+
+set.seed(12)
+df  <- read.csv('Dataset_spine.csv', col.names = c('pelvic_incidence', 'pelvic_tilt', 'lumbar_lordosis_angle', 'sacral_slope', 'pelvic_radius', 'degree_spondylolisthesis', 'pelvic_slope', 'Direct_tilt', 'thoracic_slope', 'cervical_tilt', 'sacrum_angle', 'scoliosis_slope', 'classification', ' '))
+
+df$class = ifelse(df$class == "Abnormal", 0, 1) #making classification numeric
+df$X. <- NULL #dropping the column with variable descriptions in it
+data = scale(df[, 1:12]) #scaling all except classification variable
+data = data.frame(data)
+data$classification = df$classification #add classification back into scaled dataframe
+data$class = df$class
+rand_df = data.frame(matrix(rnorm(500*nrow(data)), nrow = nrow(data), ncol = 500))
+data = cbind(data, rand_df)
+
+
+data$rand_int = runif(n=nrow(data), min = 0, max = 1) #random values from uniform distribution
+data2 = data[order(data$rand_int),] #reorder dataframe by random value
+data2$group = seq(from = 1, to=5, by=1)
+data2$pred_cv = 0
+detach(data2)
+data2$pred_prob = 0
+attach(data2)
+
+
+
+
+for (grp in 1:5){
+  train = data2[data2$group != grp, ]
+  test = data2[data2$group == grp,]
+  
+  min.model = suppressWarnings(glm(class ~ 1, data=train, family=binomial(link="logit")))
+  biggest <- suppressWarnings(formula(glm(class ~ . - classification - pred_cv - rand_int - group, data = train,    family=binomial(link="logit"))))
+
+  step.logit = step(min.model, direction='forward', scope=biggest, trace=0)
+  pred = predict(step.logit, train, type = 'response')
+  cutoffs = c()
+  accuracies = c()
+  for (val in as.vector(pred)){
+    cf = ModelMetrics::confusionMatrix(train$class, as.vector(pred), cutoff = val)
+    acc = (cf[1,1] + cf[2,2])/nrow(train)
+    accuracies = c(accuracies, acc)
+    cutoffs = c(cutoffs, val)
+  }
+
+  max1 = max(accuracies)
+  ind = match(max1, accuracies)
+  op = cutoffs[ind]
+  
+  cv_lr_pred = predict(step.logit, test, type = 'response')
+  data2$pred_prob[data2$group == grp] = cv_lr_pred
+  data2$pred_cv[data2$group == grp] = ifelse(cv_lr_pred < op, 0, 1)
+}
+
+
+cv_lr_cfr_w500 = ModelMetrics::confusionMatrix( predicted = data2$pred_cv, actual = data2$class)
+cv_lr_cfr_w500 #with provided random noise
+
+#accuracy score for Cross Validated RandomForest with 500 Random Variables
+acc_cv_lr_w500 = (cv_lr_cfr_w500[1,1] + cv_lr_cfr_w500[2,2])/nrow(data2)
+acc_cv_lr_w500
+
+plot(x = jitter(data2$pred_prob, amount = .1), y= jitter(data2$class, amount = .1), main = "CV/Step w/500 Model with Lowess Line")
+lines(lowess(x = jitter(data2$pred_prob, amount = .1), y= jitter(data2$class, amount = .1)))
+
+
+
+#PCA for 500 random variables
+myvars <- names(data2) %in% c("classification", "rand_int", "pred_cv", "group") #remove classificaiton
+newdata = data2[!myvars]
+
+prin_comp = prcomp(newdata, scale.= T)
+names(prin_comp)
+prin_comp$rotation[1:5,1:4]
+biplot(prin_comp, scale = 0)
+std_dev <- prin_comp$sdev
+pr_var <- std_dev^2
+pr_var[1:10]
+prop_varex <- pr_var/sum(pr_var)
+prop_varex[1:20]
+
+
+plot(prop_varex, xlab = "Principal Component",
+             ylab = "Proportion of Variance Explained",
+             type = "b", main='Variance Explained 500')
+
+plot(cumsum(prop_varex), xlab = "Principal Component",
+              ylab = "Cumulative Proportion of Variance Explained",
+              type = "b", main= "Cumulative Variance Explained 500")
+```
+
+
+# Add 1000 Random Variables
+
+
+```{r, message=FALSE, echo=FALSE, warning = FALSE}
+set.seed(12)
+df  <- read.csv('Dataset_spine.csv', col.names = c('pelvic_incidence', 'pelvic_tilt', 'lumbar_lordosis_angle', 'sacral_slope', 'pelvic_radius', 'degree_spondylolisthesis', 'pelvic_slope', 'Direct_tilt', 'thoracic_slope', 'cervical_tilt', 'sacrum_angle', 'scoliosis_slope', 'classification', ' '))
+
+df$class = ifelse(df$classification == "Abnormal", 0, 1) #making classification numeric
+df$X. <- NULL #dropping the column with variable descriptions in it
+data = scale(df[, 1:12]) #scaling all except classification variable
+data = data.frame(data)
+data$classification = df$classification #add classification back into scaled dataframe
+data$class = df$class
+rand_df = data.frame(matrix(rnorm(1000*nrow(data)), nrow = nrow(data), ncol = 1000))
+data = cbind(data, rand_df)
+
+
+data$rand_int = runif(n=nrow(data), min = 0, max = 1) #random values from uniform distribution
+data2 = data[order(data$rand_int),] #reorder dataframe by random value
+
+data2$group = seq(from = 1, to=5, by=1)
+data2$pred_cv = 0
+
+detach(data2)
+data2$pred_prob
+attach(data2)
+
+
+
+for (grp in 1:5){
+  train = data2[data2$group != grp, ]
+  test = data2[data2$group == grp,]
+  
+  min.model = suppressWarnings(glm(class ~ 1, data=train, family=binomial(link="logit")))
+  biggest <- suppressWarnings(formula(glm(class ~ . - classification - pred_cv - rand_int - group, data = train,    family=binomial(link="logit"))))
+
+  step.logit = step(min.model, direction='forward', scope=biggest, trace=0)
+  pred = predict(step.logit, train, type = 'response')
+  cutoffs = c()
+  accuracies = c()
+  for (val in as.vector(pred)){
+    cf = ModelMetrics::confusionMatrix(train$class, as.vector(pred), cutoff = val)
+    acc = (cf[1,1] + cf[2,2])/nrow(train)
+    accuracies = c(accuracies, acc)
+    cutoffs = c(cutoffs, val)
+  }
+
+  max1 = max(accuracies)
+  ind = match(max1, accuracies)
+  op = cutoffs[ind]
+  
+  cv_lr_pred = predict(step.logit, test, type = 'response')
+  data2$pred_prob[data2$group == grp] = cv_lr_pred
+  data2$pred_cv[data2$group == grp] = ifelse(cv_lr_pred < op, 0, 1)
+}
+
+
+cv_lr_cfr_w1000 = ModelMetrics::confusionMatrix( predicted = data2$pred_cv, actual = data2$class)
+cv_lr_cfr_w1000
+
+#accuracy score for Cross Validated RandomForest with 1000 Random Variables
+acc_cv_lr_w1000 = (cv_lr_cfr_w1000[1,1] + cv_lr_cfr_w1000[2,2])/nrow(data2)
+acc_cv_lr_w1000
+
+
+plot(x = jitter(data2$pred_prob, amount = .1), y= jitter(data2$class, amount = .1), main = "CV/Step w/1000 Model with Lowess Line")
+lines(lowess(x = jitter(data2$pred_prob, amount = .1), y= jitter(data2$class, amount = .1)))
+
+
+
+#PCA for 1000 random variables
+myvars <- names(data2) %in% c("classification", "rand_int", "pred_cv", "group") #remove classificaiton
+newdata = data2[!myvars]
+
+prin_comp = prcomp(newdata, scale.= T)
+names(prin_comp)
+prin_comp$rotation[1:5,1:4]
+biplot(prin_comp, scale = 0)
+std_dev <- prin_comp$sdev
+pr_var <- std_dev^2
+pr_var[1:10]
+prop_varex <- pr_var/sum(pr_var)
+prop_varex[1:20]
+
+
+plot(prop_varex, xlab = "Principal Component",
+             ylab = "Proportion of Variance Explained",
+             type = "b", main='Variance Explained 1000')
+
+plot(cumsum(prop_varex), xlab = "Principal Component",
+              ylab = "Cumulative Proportion of Variance Explained",
+              type = "b", main= "Cumulative Variance Explained 1000")
+
+
+
+```
+
+
+

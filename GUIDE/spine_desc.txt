@@ -1,0 +1,16 @@
+"C:\Users\Michael Streyle\Desktop\Senior Project\spine_data_guide.csv"
+NA
+2
+1 pelvic_incidence n
+2 pelvic_tilt n
+3 lumbar_lordosis_angle n
+4 sacral_slope n
+5 pelvic_radius n
+6 degree_spondylolisthesis n
+7 pelvic_slope n
+8 Direct_tilet n
+9 thoracic_slope n
+10 cervical_tilt n
+11 sacrum_angle n
+12 scoliosis_slope n
+13 classification d

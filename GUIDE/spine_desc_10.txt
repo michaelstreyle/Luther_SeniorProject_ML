@@ -1,0 +1,26 @@
+"C:\Users\Michael Streyle\Desktop\Senior Project\data_with10.csv"
+NA
+2
+1 pelvic_incidence n
+2 pelvic_tilt n
+3 lumbar_lordosis_angle n
+4 sacral_slope n
+5 pelvic_radius n
+6 degree_spondylolisthesis n
+7 pelvic_slope n
+8 Direct_tilet n
+9 thoracic_slope n
+10 cervical_tilt n
+11 sacrum_angle n
+12 scoliosis_slope n
+13 classification d
+14 X1 n
+15 X2 n
+16 X3 n
+17 X4 n
+18 X5 n
+19 X6 n
+20 X7 n
+21 X8 n
+22 X9 n
+23 X10 n

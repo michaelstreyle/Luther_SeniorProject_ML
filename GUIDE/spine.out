@@ -1,0 +1,181 @@
+             GGG   U   U  I  DDDD   EEEE
+            G   G  U   U  I  D   D  E
+            G      U   U  I  D   D  E
+            G  GG  U   U  I  D   D  EEE
+            G   G  U   U  I  D   D  E
+            G   G  U   U  I  D   D  E
+             GGG    UUU   I  DDDD   EEEE
+   
+ GUIDE Classification and Regression Trees and Forests
+ Compiled with Visual Fortran 64 18.0.1.156 on Windows 10              
+ Version 29.0 (Build date: September 9, 2018)      
+ Copyright (c) 1997-2018 Wei-Yin Loh. All rights reserved.
+ This software is based upon work supported by the U.S. Army Research Office,
+ the National Science Foundation and the National Institutes of Health.
+  
+ This job was started on: 10/27/18 at 11:06
+  
+ Classification tree
+ Pruning by cross-validation
+ Data description file: spine_desc.txt
+ Training sample file: 
+ C:\Users\Michael Streyle\Desktop\Senior Project\spine_data_guide.csv
+ Missing value code: NA
+ Records in data file start on line 2
+ Warning: N variables changed to S
+ Dependent variable is classification
+ Number of records in data file: 310
+ Length of longest entry in data file: 12
+ Number of classes: 2
+ Training sample class proportions of D variable classification:
+    Class  #Cases     Proportion
+ Abnormal     210     0.67741935
+ Normal       100     0.32258065
+  
+ Summary information (without x variables)
+ d=dependent, b=split and fit cat variable using indicator variables,
+ c=split-only categorical, i=fit-only categorical (via indicators),
+ s=split-only numerical, n=split and fit numerical, f=fit-only numerical,
+ m=missing-value flag variable, p=periodic variable, w=weight
+                                                                        Codes/              
+                                                                       Levels/              
+  Column  Name                            Minimum      Maximum         Periods      #Missing
+       1  pelvic_incidence           s    26.15        129.8    
+       2  pelvic_tilt                s   -6.555        49.43    
+       3  lumbar_lordosis_angle      s    14.00        125.7    
+       4  sacral_slope               s    13.37        121.4    
+       5  pelvic_radius              s    70.08        163.1    
+       6  degree_spondylolisthesis   s   -11.06        418.5    
+       7  pelvic_slope               s   0.3220E-02   0.9988    
+       8  Direct_tilet               s    7.027        36.74    
+       9  thoracic_slope             s    7.038        19.32    
+      10  cervical_tilt              s    7.031        16.82    
+      11  sacrum_angle               s   -35.29        6.972    
+      12  scoliosis_slope            s    7.008        44.34    
+      13  classification             d                                       2
+  
+      Total  #cases w/   #missing
+     #cases    miss. D  ord. vals   #X-var   #N-var   #F-var   #S-var
+        310          0          0        0        0        0       12
+     #P-var   #M-var   #B-var   #C-var   #I-var
+          0        0        0        0        0
+ No. cases used for training: 310
+  
+ Univariate split highest priority
+ Interaction and linear splits 2nd and 3rd priorities
+ Pruning by v-fold cross-validation, with v = 10
+ Selected tree is based on mean of CV estimates
+ Simple node models
+ Estimated priors
+ Unit misclassification costs
+ Split values for N and S variables based on exhaustive search
+ Max. number of split levels: 10
+ Min. node sample size: 2
+ Number of SE's for pruned tree: .5000
+  
+ Size and CV mean cost and SE of subtrees:
+  Tree   #Tnodes  Mean Cost   SE(Mean)   BSE(Mean)  Median Cost  BSE(Median)
+    1       25   2.387E-01   2.421E-02   2.509E-02   2.419E-01   3.354E-02
+    2       20   2.387E-01   2.421E-02   2.509E-02   2.419E-01   3.354E-02
+    3       18   2.226E-01   2.363E-02   2.059E-02   2.258E-01   3.273E-02
+    4       16   2.226E-01   2.363E-02   2.059E-02   2.258E-01   3.273E-02
+    5       13   2.161E-01   2.338E-02   1.970E-02   2.258E-01   2.352E-02
+    6       10   2.129E-01   2.325E-02   1.943E-02   2.258E-01   1.972E-02
+    7        6   2.000E-01   2.272E-02   2.363E-02   1.935E-01   3.148E-02
+    8        5   1.968E-01   2.258E-02   2.178E-02   2.097E-01   2.461E-02
+    9        4   1.968E-01   2.258E-02   1.247E-02   1.935E-01   1.648E-02
+   10**      3   1.935E-01   2.244E-02   1.492E-02   1.774E-01   2.443E-02
+   11        2   2.258E-01   2.375E-02   1.720E-02   2.258E-01   1.632E-02
+   12        1   3.226E-01   2.655E-02   0.000E+00   3.226E-01   0.000E+00
+  
+ 0-SE tree based on mean is marked with * and has 3 terminal nodes
+ 0-SE tree based on median is marked with + and has 3 terminal nodes
+ Selected-SE tree based on mean using naive SE is marked with **
+ Selected-SE tree based on mean using bootstrap SE is marked with --
+ Selected-SE tree based on median and bootstrap SE is marked with ++
+ * tree, ** tree, + tree, and ++ tree all the same
+  
+ Following tree is based on mean CV with naive SE estimate (**).
+  
+ Structure of final tree. Each terminal node is marked with a T.
+  
+ Node cost is node misclassification cost divided by number of training cases
+        Node    Total    Train    Predicted        Node    Split          Interacting
+       label    cases    cases    class            cost    variables      variable
+           1      310      310    Abnormal       3.226E-01 degree_spondylolisthesis 
+           2      161      161    Normal         3.975E-01 sacral_slope 
+           4T      35       35    Abnormal       2.571E-01 thoracic_slope 
+           5T     126      126    Normal         3.016E-01 pelvic_radius 
+           3T     149      149    Abnormal       2.013E-02 degree_spondylolisthesis +thoracic_slope
+  
+ Number of terminal nodes of final tree: 3
+ Total number of nodes of final tree: 5
+ Second best split variable (based on curvature test) at root node is pelvic_radius
+  
+ Classification tree:
+  
+ Node 1: degree_spondylolisthesis <= 14.854014
+   Node 2: sacral_slope <= 28.136472
+     Node 4: Abnormal
+   Node 2: sacral_slope > 28.136472 or NA
+     Node 5: Normal
+ Node 1: degree_spondylolisthesis > 14.854014 or NA
+   Node 3: Abnormal
+ 
+ ***************************************************************
+ 
+  
+Node 1: Intermediate node
+ A case goes into Node 2 if degree_spondylolisthesis <= 14.854014
+ degree_spondylolisthesis mean = 26.296694
+    Class      Number   Posterior
+ Abnormal         210     0.67742
+ Normal           100     0.32258
+ Number of training cases misclassified = 100
+ Predicted class is Abnormal
+ ----------------------------
+Node 2: Intermediate node
+ A case goes into Node 4 if sacral_slope <= 28.136472
+ sacral_slope mean = 35.949890
+    Class      Number   Posterior
+ Abnormal          64     0.39752
+ Normal            97     0.60248
+ Number of training cases misclassified = 64
+ Predicted class is Normal
+ ----------------------------
+Node 4: Terminal node
+    Class      Number   Posterior
+ Abnormal          26     0.74286
+ Normal             9     0.25714
+ Number of training cases misclassified = 9
+ Predicted class is Abnormal
+ ----------------------------
+Node 5: Terminal node
+    Class      Number   Posterior
+ Abnormal          38     0.30159
+ Normal            88     0.69841
+ Number of training cases misclassified = 38
+ Predicted class is Normal
+ ----------------------------
+Node 3: Terminal node
+    Class      Number   Posterior
+ Abnormal         146     0.97987
+ Normal             3     0.02013
+ Number of training cases misclassified = 3
+ Predicted class is Abnormal
+ ----------------------------
+  
+ 
+ Classification matrix for training sample:
+ Predicted      True class
+ class       Abnormal    Normal
+ Abnormal         172        12
+ Normal            38        88
+ Total            210       100
+ 
+ Number of cases used for tree construction: 310
+ Number misclassified: 50
+ Resubstitution est. of mean misclassification cost: .16129032
+ 
+ LaTeX code for tree is in spine_og_tree.tex
+ Elapsed time in seconds: .4375

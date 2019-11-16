@@ -1,0 +1,283 @@
+             GGG   U   U  I  DDDD   EEEE
+            G   G  U   U  I  D   D  E
+            G      U   U  I  D   D  E
+            G  GG  U   U  I  D   D  EEE
+            G   G  U   U  I  D   D  E
+            G   G  U   U  I  D   D  E
+             GGG    UUU   I  DDDD   EEEE
+   
+ GUIDE Classification and Regression Trees and Forests
+ Compiled with Visual Fortran 64 18.0.1.156 on Windows 10              
+ Version 29.0 (Build date: September 9, 2018)      
+ Copyright (c) 1997-2018 Wei-Yin Loh. All rights reserved.
+ This software is based upon work supported by the U.S. Army Research Office,
+ the National Science Foundation and the National Institutes of Health.
+  
+ This job was started on: 10/23/18 at 12:16
+  
+ Classification tree
+ Pruning by cross-validation
+ Data description file: spine_desc_100.txt
+ Training sample file: 
+ C:\Users\Michael Streyle\Desktop\Senior Project\data_with100.csv
+ Missing value code: NA
+ Records in data file start on line 2
+ Warning: N variables changed to S
+ Dependent variable is classification
+ Number of records in data file: 310
+ Length of longest entry in data file: 12
+ Number of classes: 2
+ Training sample class proportions of D variable classification:
+    Class  #Cases     Proportion
+ Abnormal     210     0.67741935
+ Normal       100     0.32258065
+  
+ Summary information (without x variables)
+ d=dependent, b=split and fit cat variable using indicator variables,
+ c=split-only categorical, i=fit-only categorical (via indicators),
+ s=split-only numerical, n=split and fit numerical, f=fit-only numerical,
+ m=missing-value flag variable, p=periodic variable, w=weight
+                                                                        Codes/              
+                                                                       Levels/              
+  Column  Name                            Minimum      Maximum         Periods      #Missing
+       1  pelvic_incidence           s   -1.993        4.023    
+       2  pelvic_tilt                s   -2.408        3.186    
+       3  lumbar_lordosis_angle      s   -2.044        3.978    
+       4  sacral_slope               s   -2.204        5.846    
+       5  pelvic_radius              s   -3.592        3.390    
+       6  degree_spondylolisthesis   s  -0.9946        10.44    
+       7  pelvic_slope               s   -1.644        1.840    
+       8  Direct_tilet               s   -1.655        1.785    
+       9  thoracic_slope             s   -1.773        1.841    
+      10  cervical_tilt              s   -1.695        1.689    
+      11  sacrum_angle               s   -1.737        1.720    
+      12  scoliosis_slope            s   -1.783        1.789    
+      13  classification             d                                       2
+      14  X1                         s   -2.986        2.415    
+      15  X2                         s   -2.493        2.667    
+      16  X3                         s   -3.046        3.107    
+      17  X4                         s   -2.520        2.133    
+      18  X5                         s   -3.030        3.192    
+      19  X6                         s   -3.128        2.851    
+      20  X7                         s   -3.024        3.014    
+      21  X8                         s   -2.786        2.557    
+      22  X9                         s   -3.140        2.769    
+      23  X10                        s   -2.910        2.975    
+      24  X11                        s   -2.619        3.273    
+      25  X12                        s   -2.710        2.680    
+      26  X13                        s   -2.524        3.019    
+      27  X14                        s   -2.468        3.011    
+      28  X15                        s   -2.869        3.008    
+      29  X16                        s   -2.727        2.857    
+      30  X17                        s   -2.802        3.248    
+      31  X18                        s   -2.683        2.560    
+      32  X19                        s   -3.319        2.660    
+      33  X20                        s   -3.302        2.381    
+      34  X21                        s   -2.621        2.544    
+      35  X22                        s   -2.643        2.487    
+      36  X23                        s   -2.756        2.583    
+      37  X24                        s   -2.423        2.347    
+      38  X25                        s   -3.245        2.510    
+      39  X26                        s   -3.132        2.667    
+      40  X27                        s   -2.531        3.328    
+      41  X28                        s   -2.546        2.788    
+      42  X29                        s   -2.625        3.222    
+      43  X30                        s   -3.840        2.952    
+      44  X31                        s   -3.106        2.752    
+      45  X32                        s   -2.577        2.645    
+      46  X33                        s   -2.999        3.261    
+      47  X34                        s   -2.781        3.282    
+      48  X35                        s   -2.606        2.442    
+      49  X36                        s   -2.108        2.995    
+      50  X37                        s   -2.527        2.536    
+      51  X38                        s   -3.247        3.209    
+      52  X39                        s   -3.253        2.502    
+      53  X40                        s   -2.268        2.931    
+      54  X41                        s   -2.995        3.162    
+      55  X42                        s   -2.782        2.831    
+      56  X43                        s   -2.952        3.223    
+      57  X44                        s   -2.666        3.289    
+      58  X45                        s   -3.056        2.819    
+      59  X46                        s   -3.092        2.913    
+      60  X47                        s   -2.555        2.872    
+      61  X48                        s   -3.022        2.634    
+      62  X49                        s   -3.248        2.672    
+      63  X50                        s   -2.832        3.168    
+      64  X51                        s   -2.808        2.937    
+      65  X52                        s   -2.728        2.813    
+      66  X53                        s   -2.733        2.628    
+      67  X54                        s   -2.301        3.031    
+      68  X55                        s   -2.670        3.372    
+      69  X56                        s   -2.407        2.964    
+      70  X57                        s   -2.714        2.896    
+      71  X58                        s   -2.733        2.610    
+      72  X59                        s   -3.274        2.380    
+      73  X60                        s   -2.904        2.843    
+      74  X61                        s   -3.257        2.796    
+      75  X62                        s   -2.905        3.179    
+      76  X63                        s   -3.412        3.177    
+      77  X64                        s   -2.660        2.674    
+      78  X65                        s   -2.334        2.805    
+      79  X66                        s   -2.542        2.555    
+      80  X67                        s   -3.055        3.518    
+      81  X68                        s   -2.909        2.805    
+      82  X69                        s   -4.005        3.138    
+      83  X70                        s   -2.470        2.613    
+      84  X71                        s   -2.506        2.581    
+      85  X72                        s   -2.659        3.036    
+      86  X73                        s   -2.496        3.087    
+      87  X74                        s   -2.471        3.011    
+      88  X75                        s   -2.869        3.281    
+      89  X76                        s   -2.519        3.666    
+      90  X77                        s   -2.879        2.669    
+      91  X78                        s   -2.499        2.377    
+      92  X79                        s   -2.424        2.450    
+      93  X80                        s   -3.361        2.581    
+      94  X81                        s   -2.630        2.186    
+      95  X82                        s   -2.574        2.558    
+      96  X83                        s   -2.730        2.809    
+      97  X84                        s   -2.564        2.494    
+      98  X85                        s   -3.529        2.793    
+      99  X86                        s   -2.789        4.625    
+     100  X87                        s   -2.714        3.157    
+     101  X88                        s   -2.678        3.768    
+     102  X89                        s   -4.402        2.406    
+     103  X90                        s   -2.308        2.637    
+     104  X91                        s   -3.131        2.601    
+     105  X92                        s   -3.037        2.610    
+     106  X93                        s   -2.661        2.987    
+     107  X94                        s   -2.793        2.235    
+     108  X95                        s   -2.946        2.675    
+     109  X96                        s   -2.721        3.261    
+     110  X97                        s   -2.411        2.650    
+     111  X98                        s   -2.680        3.297    
+     112  X99                        s   -2.972        3.142    
+     113  X100                       s   -3.398        2.817    
+  
+      Total  #cases w/   #missing
+     #cases    miss. D  ord. vals   #X-var   #N-var   #F-var   #S-var
+        310          0          0        0        0        0      112
+     #P-var   #M-var   #B-var   #C-var   #I-var
+          0        0        0        0        0
+ No. cases used for training: 310
+  
+ Univariate split highest priority
+ Interaction and linear splits 2nd and 3rd priorities
+ Pruning by v-fold cross-validation, with v = 10
+ Selected tree is based on mean of CV estimates
+ Simple node models
+ Estimated priors
+ Unit misclassification costs
+ Split values for N and S variables based on exhaustive search
+ Max. number of split levels: 10
+ Min. node sample size: 2
+ Number of SE's for pruned tree: .5000
+  
+ Size and CV mean cost and SE of subtrees:
+  Tree   #Tnodes  Mean Cost   SE(Mean)   BSE(Mean)  Median Cost  BSE(Median)
+    1       21   2.355E-01   2.410E-02   2.867E-02   2.097E-01   3.350E-02
+    2       17   2.226E-01   2.363E-02   2.453E-02   1.935E-01   3.029E-02
+    3       15   2.226E-01   2.363E-02   2.453E-02   1.935E-01   3.029E-02
+    4       13   2.226E-01   2.363E-02   2.453E-02   1.935E-01   3.029E-02
+    5       11   2.194E-01   2.350E-02   2.319E-02   2.097E-01   3.554E-02
+    6        9   2.161E-01   2.338E-02   2.259E-02   2.097E-01   3.057E-02
+    7        8   2.161E-01   2.338E-02   2.055E-02   2.258E-01   1.988E-02
+    8        7   2.065E-01   2.299E-02   2.127E-02   2.097E-01   2.852E-02
+    9        6   2.000E-01   2.272E-02   2.360E-02   2.097E-01   3.297E-02
+   10        4   1.903E-01   2.230E-02   1.772E-02   1.935E-01   1.931E-02
+   11**      3   1.903E-01   2.230E-02   1.965E-02   1.935E-01   2.321E-02
+   12        2   2.290E-01   2.387E-02   2.158E-02   2.258E-01   3.002E-02
+   13        1   3.226E-01   2.655E-02   4.448E-03   3.226E-01   7.213E-04
+  
+ 0-SE tree based on mean is marked with * and has 3 terminal nodes
+ 0-SE tree based on median is marked with + and has 3 terminal nodes
+ Selected-SE tree based on mean using naive SE is marked with **
+ Selected-SE tree based on mean using bootstrap SE is marked with --
+ Selected-SE tree based on median and bootstrap SE is marked with ++
+ * tree, ** tree, + tree, and ++ tree all the same
+  
+ Following tree is based on mean CV with naive SE estimate (**).
+  
+ Structure of final tree. Each terminal node is marked with a T.
+  
+ Node cost is node misclassification cost divided by number of training cases
+        Node    Total    Train    Predicted        Node    Split          Interacting
+       label    cases    cases    class            cost    variables      variable
+           1      310      310    Abnormal       3.226E-01 degree_spondylolisthesis 
+           2      161      161    Normal         3.975E-01 sacral_slope 
+           4T      35       35    Abnormal       2.571E-01 X89 
+           5T     126      126    Normal         3.016E-01 pelvic_radius 
+           3T     149      149    Abnormal       2.013E-02 degree_spondylolisthesis +X40
+  
+ Number of terminal nodes of final tree: 3
+ Total number of nodes of final tree: 5
+ Second best split variable (based on curvature test) at root node is pelvic_radius
+  
+ Classification tree:
+  
+ Node 1: degree_spondylolisthesis <= -.30465860
+   Node 2: sacral_slope <= -1.1038700
+     Node 4: Abnormal
+   Node 2: sacral_slope > -1.1038700 or NA
+     Node 5: Normal
+ Node 1: degree_spondylolisthesis > -.30465860 or NA
+   Node 3: Abnormal
+ 
+ ***************************************************************
+ 
+  
+Node 1: Intermediate node
+ A case goes into Node 2 if degree_spondylolisthesis <= -.30465860
+ degree_spondylolisthesis mean = .64515364E-11
+    Class      Number   Posterior
+ Abnormal         210     0.67742
+ Normal           100     0.32258
+ Number of training cases misclassified = 100
+ Predicted class is Abnormal
+ ----------------------------
+Node 2: Intermediate node
+ A case goes into Node 4 if sacral_slope <= -1.1038700
+ sacral_slope mean = -.52178259
+    Class      Number   Posterior
+ Abnormal          64     0.39752
+ Normal            97     0.60248
+ Number of training cases misclassified = 64
+ Predicted class is Normal
+ ----------------------------
+Node 4: Terminal node
+    Class      Number   Posterior
+ Abnormal          26     0.74286
+ Normal             9     0.25714
+ Number of training cases misclassified = 9
+ Predicted class is Abnormal
+ ----------------------------
+Node 5: Terminal node
+    Class      Number   Posterior
+ Abnormal          38     0.30159
+ Normal            88     0.69841
+ Number of training cases misclassified = 38
+ Predicted class is Normal
+ ----------------------------
+Node 3: Terminal node
+    Class      Number   Posterior
+ Abnormal         146     0.97987
+ Normal             3     0.02013
+ Number of training cases misclassified = 3
+ Predicted class is Abnormal
+ ----------------------------
+  
+ 
+ Classification matrix for training sample:
+ Predicted      True class
+ class       Abnormal    Normal
+ Abnormal         172        12
+ Normal            38        88
+ Total            210       100
+ 
+ Number of cases used for tree construction: 310
+ Number misclassified: 50
+ Resubstitution est. of mean misclassification cost: .16129032
+ 
+ Observed and fitted values are stored in spine_w100_fitted.txt
+ LaTeX code for tree is in spine_w100_tree.tex
+ Elapsed time in seconds: 24.00
